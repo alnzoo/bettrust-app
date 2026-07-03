@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 // ─── CONFIG ───────────────────────────────────────────────────────
 // The Odds API — clé gratuite sur https://the-odds-api.com
 // 500 requêtes/mois en gratuit, largement suffisant pour commencer
-const ODDS_API_KEY = "REMPLACE_PAR_TA_CLE_API"; // <- mets ta clé ici
+const ODDS_API_KEY = "e4bf1706a287a0cffec21fb16d5e6ae6"; // <- mets ta clé ici
 const ODDS_BASE = "https://api.the-odds-api.com/v4";
 
 // Sports qu'on suit
