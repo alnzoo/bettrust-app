@@ -416,16 +416,35 @@ Compare ta probabilité estimée avec la probabilité implicite du marché.
 - Écart >8% contre toi : 🪤 PIÈGE — le public sur-cote ce favori, fuis
 - Écart <8% : ⚖️ Cote juste — pas d'avantage identifiable
 
+6. MARCHÉS ALTERNATIFS TENNIS — cherche et analyse TOUS ces marchés disponibles :
+RÉSULTAT : Vainqueur du match / Handicap sets (ex: Joueur A -1.5 sets)
+SETS : Nombre de sets joués (2 ou 3) / Score exact en sets (2-0, 2-1)
+JEUX : Total de jeux Over/Under (ex: +/- 20.5, 21.5, 22.5...) / Jeux dans un set précis
+ACES : Total d'aces Over/Under par joueur / Joueur avec le plus d'aces
+BREAKS : Nombre de breaks de service / Double fautes Over/Under
+TIE-BREAKS : Y aura-t-il un tie-break ? Dans quel set ?
+SCORE EXACT : Score précis du match (ex: 6-4 6-3)
+Pour chaque marché : cherche la cote disponible sur Winamax/Betclic/Unibet et calcule si elle est value ou non.
+
 FORMAT STRICT :
 ---
-⚡ VERDICT : [choix ultra-tranché — pas de "peut-être"]
+⚡ VERDICT PRINCIPAL : [choix ultra-tranché — pas de "peut-être"]
 🎯 CONFIANCE : X/10 (sois honnête — 10/10 n'existe pas dans le sport)
 🔍 SIGNAL MARCHÉ : [🪤 Piège / 💎 Value bet / ⚖️ Cote juste] + probabilité marché vs probabilité réelle estimée
 
 📊 ANALYSE INSIDER :
 [Déconstruction complète dans l'ordre de la méthodologie — sois chirurgical, pas généraliste]
 
-💰 RECOMMANDATION : [pari exact + cote + pourquoi MAINTENANT avant que le marché se corrige]
+🎯 TOUS LES PARIS RECOMMANDÉS — classés par valeur décroissante :
+[Pour chaque pari avec une vraie valeur identifiée :]
+→ [Marché exact] : [Sélection] @ [Cote estimée] — Confiance X/10 — [Justification en 1 phrase]
+[Minimum 3 paris, maximum 6 — uniquement ceux où tu as un avantage informationnel réel]
+
+🏆 LE MEILLEUR PARI DU MATCH :
+[Le pari avec le rapport valeur/risque le plus élevé — mis en avant clairement]
+Marché : [exact] | Cote : [X.XX] | Confiance : [X/10]
+Pourquoi maintenant : [raison en 1-2 phrases]
+
 ⚠️ CE QUI PEUT TOUT CHANGER : [le seul vrai facteur de risque non pricé]
 ---`;
 
@@ -475,14 +494,26 @@ FORMAT STRICT :
 📊 ANALYSE INSIDER :
 [Déconstruction complète — cotes, physique, tactique, facteurs cachés]
 
-📋 MARCHÉS AVEC SIGNAL RÉEL :
-[Marché — Pronostic — Confiance — Justification chiffrée]
-[Si pas de signal : "Marché X — données insuffisantes, à éviter"]
+🎯 TOUS LES PARIS RECOMMANDÉS — classés par valeur décroissante :
+Cherche et analyse TOUS ces marchés disponibles sur Winamax/Betclic/Unibet :
+RÉSULTAT : Vainqueur / Double chance / Nul / Les deux équipes marquent (BTT)
+MI-TEMPS : Vainqueur à la mi-temps / Score mi-temps / Mi-temps & match
+BUTS : Over/Under de -0.5 à +5.5 / Équipe qui marque en premier / Dernière équipe à marquer
+BUTEURS : 1er buteur / Buteur à tout moment / Passeur décisif — cherche les cotes disponibles
+TIRS : Tirs cadrés Over/Under par équipe / Corners Over/Under
+HANDICAP : Handicap -0.5, -1, -1.5, -2 buts
+SCORE EXACT : Les scores les plus probables basés sur les xG
+CARTONS : Total cartons Over/Under / Joueur averti
+Pour chaque marché avec valeur : → [Marché exact] : [Sélection] @ [Cote estimée] — Confiance X/10 — [Justification 1 phrase]
 
-⚽ BUTEURS PROBABLES :
-[Nom — xG derniers matchs — But% estimé — Contexte défensif adverse]
+⚽ BUTEURS/PASSEURS PROBABLES :
+[Nom — xG derniers matchs — But% estimé — Cote estimée buteur à tout moment]
 
-💰 MEILLEURE OPPORTUNITÉ DU MATCH : [le pari avec le meilleur rapport valeur/risque + cote]
+🏆 LE MEILLEUR PARI DU MATCH :
+[Le pari avec le rapport valeur/risque le plus élevé — mis en avant clairement]
+Marché : [exact] | Cote : [X.XX] | Confiance : [X/10]
+Pourquoi maintenant : [raison en 1-2 phrases]
+
 ⚠️ FACTEUR DE RISQUE N°1 : [ce qui peut inverser l'analyse en 90 minutes]
 ---`;
 
@@ -1560,6 +1591,20 @@ function AnalysisPanel({ match, onClose }) {
     }
     if(l.startsWith("📋 MARCHÉS")) return <div key={i} style={{fontSize:13,fontWeight:800,color:"#7c3aed",marginTop:14,marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>{l}</div>;
     if(l.startsWith("⚽")||l.startsWith("🎯 TIRS")) return <div key={i} style={{fontSize:13,fontWeight:700,color:"#111827",background:"#fef9c3",border:"1.5px solid #fde047",borderRadius:9,padding:"9px 12px",marginTop:8,marginBottom:4,lineHeight:1.5}}>{l}</div>;
+    if(l.startsWith("🏆 LE MEILLEUR")) return (
+      <div key={i} style={{background:"linear-gradient(135deg,#0f2d1a,#16a34a)",borderRadius:14,padding:"16px 18px",marginTop:14,marginBottom:4}}>
+        <div style={{fontSize:13,fontWeight:900,color:"#86efac",marginBottom:6}}>🏆 LE MEILLEUR PARI DU MATCH</div>
+        <div style={{fontSize:14,color:"#fff",fontWeight:700,lineHeight:1.5}}>{l.replace("🏆 LE MEILLEUR PARI DU MATCH :","").trim()}</div>
+      </div>
+    );
+    if(l.startsWith("🎯 TOUS LES PARIS")) return <div key={i} style={{fontSize:13,fontWeight:800,color:"#7c3aed",background:"#f5f3ff",border:"1.5px solid #ddd6fe",borderRadius:9,padding:"8px 12px",marginTop:14,marginBottom:6}}>{l}</div>;
+    if(l.startsWith("→ ")) return (
+      <div key={i} style={{background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:10,padding:"9px 13px",marginBottom:6,fontSize:13,color:"#166534",fontWeight:600,lineHeight:1.5}}>
+        {l}
+      </div>
+    );
+    if(l.startsWith("Marché :")) return <div key={i} style={{fontSize:13,color:"#fff",fontWeight:700,marginTop:4}}>{l}</div>;
+    if(l.startsWith("Pourquoi")) return <div key={i} style={{fontSize:12,color:"#bbf7d0",marginTop:4,fontStyle:"italic"}}>{l}</div>;
     if(l.startsWith("💰")) return <div key={i} style={{fontSize:14,fontWeight:700,color:"#0ea5e9",background:"#f0f9ff",borderRadius:8,padding:"8px 12px",marginTop:10,marginBottom:12}}>{l}</div>;
     if(l.startsWith("📊")||l.startsWith("⚠️")) return <div key={i} style={{fontSize:13,fontWeight:800,color:"#374151",marginTop:10,marginBottom:4}}>{l}</div>;
     if(l.startsWith("---")) return <hr key={i} style={{border:"none",borderTop:`1px solid ${C.border}`,margin:"8px 0"}}/>;
@@ -1576,7 +1621,43 @@ function AnalysisPanel({ match, onClose }) {
         </div>
         <div style={{padding:"18px 22px",overflowY:"auto",flex:1}}>
           {!analysis&&!loading&&(<div style={{textAlign:"center",padding:"28px 0"}}><div style={{fontSize:44,marginBottom:14}}>{match.sport==="football"?"⚽":"🧠"}</div><div style={{fontSize:17,fontWeight:900,color:"#111827",marginBottom:8}}>{match.sport==="football"?"Analyse multi-marchés":"Analyse ultra-poussée"}</div><div style={{fontSize:13,color:C.gray,marginBottom:22,lineHeight:1.6}}>{match.sport==="football"?"Composition · Résultat · Mi-temps · Buts · Buteurs · Tirs cadrés":"Forme · Physique · Mental · Météo · Réseaux sociaux · Stats cachées"}</div><button onClick={run} style={{background:`linear-gradient(135deg,${C.green},#22c55e)`,color:"#fff",border:"none",borderRadius:12,padding:"12px 32px",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>Lancer l'analyse →</button></div>)}
-          {loading&&(<div style={{textAlign:"center",padding:"36px 0"}}><div style={{fontSize:34,marginBottom:16}}>🔍</div><div style={{fontSize:15,fontWeight:800,color:"#111827",marginBottom:8}}>Recherche en cours...</div><div style={{fontSize:13,color:C.gray,lineHeight:1.9}}>Consultation des dernières infos<br/>Analyse des réseaux sociaux<br/>Vérification météo & conditions<br/>Calcul du verdict final</div></div>)}
+          {loading&&(<div style={{textAlign:"center",padding:"36px 0"}}>
+            <style>{`
+              @keyframes loupeSearch {
+                0%   { transform: translate(0,0) rotate(0deg); }
+                20%  { transform: translate(12px,-8px) rotate(15deg); }
+                40%  { transform: translate(-8px,10px) rotate(-10deg); }
+                60%  { transform: translate(10px,6px) rotate(20deg); }
+                80%  { transform: translate(-6px,-10px) rotate(-5deg); }
+                100% { transform: translate(0,0) rotate(0deg); }
+              }
+              @keyframes loupePulse {
+                0%,100% { opacity:1; transform: scale(1); }
+                50%     { opacity:0.7; transform: scale(1.12); }
+              }
+              @keyframes stepFade {
+                0%   { opacity:0.3; }
+                50%  { opacity:1; }
+                100% { opacity:0.3; }
+              }
+            `}</style>
+            <div style={{fontSize:52,marginBottom:20,display:"inline-block",animation:"loupeSearch 2.4s ease-in-out infinite"}}>🔍</div>
+            <div style={{fontSize:15,fontWeight:800,color:"#111827",marginBottom:16}}>Analyse en cours...</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:260,margin:"0 auto"}}>
+              {[
+                {icon:"📊",text:"Déconstruction des cotes"},
+                {icon:"🧬",text:"Analyse physique & mentale"},
+                {icon:"🌦️",text:"Conditions & contexte"},
+                {icon:"💎",text:"Détection value & pièges"},
+                {icon:"🏆",text:"Verdict final multi-marchés"},
+              ].map((s,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"#f9fafb",borderRadius:10,padding:"8px 14px",animation:`stepFade 2s ease-in-out ${i*0.4}s infinite`}}>
+                  <span style={{fontSize:16}}>{s.icon}</span>
+                  <span style={{fontSize:13,color:"#374151",fontWeight:500}}>{s.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>)}
           {analysis&&!loading&&<div>{lines}</div>}
         </div>
       </div>
