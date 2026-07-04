@@ -840,75 +840,6 @@ function getPlayerPositions(players, teamSide) {
 
 
 // ─── STYLES ───────────────────────────────────────────────────────
-// ─── PROTECTION CAPTURE D'ÉCRAN ───────────────────────────────────
-// Masque le contenu sensible dès qu'une capture est détectée.
-// Techniques combinées : CSS print-media, visibilitychange + blur event,
-// et overlay opaque sur les panels d'analyse.
-
-function useScreenshotProtection() {
-  const [isBlocked, setIsBlocked] = useState(false);
-
-  useEffect(() => {
-    // Méthode 1 : détecte quand la fenêtre perd le focus (screenshot sur mobile)
-    const handleBlur = () => setIsBlocked(true);
-    const handleFocus = () => setTimeout(() => setIsBlocked(false), 800);
-
-    // Méthode 2 : détecte visibilitychange (app en arrière-plan)
-    const handleVisibility = () => {
-      if (document.visibilityState === "hidden") setIsBlocked(true);
-      else setTimeout(() => setIsBlocked(false), 800);
-    };
-
-    window.addEventListener("blur", handleBlur);
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      window.removeEventListener("blur", handleBlur);
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, []);
-
-  return isBlocked;
-}
-
-// Composant qui enveloppe le contenu sensible avec protection maximale
-function ProtectedContent({ children }) {
-  const isBlocked = useScreenshotProtection();
-
-  return (
-    <div style={{position:"relative", userSelect:"none", WebkitUserSelect:"none"}}>
-      {/* Overlay opaque déclenché lors d'une capture détectée */}
-      {isBlocked && (
-        <div style={{
-          position:"fixed", inset:0, zIndex:9999,
-          background:"#000",
-          display:"flex", alignItems:"center", justifyContent:"center",
-          flexDirection:"column", gap:16,
-        }}>
-          <div style={{width:60,height:60,borderRadius:16,background:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>🔒</div>
-          <div style={{fontSize:16,fontWeight:800,color:"#fff",textAlign:"center"}}>Contenu protégé</div>
-          <div style={{fontSize:13,color:"#6b7280",textAlign:"center",maxWidth:260,lineHeight:1.5}}>Les analyses BetTrust sont exclusives et ne peuvent pas être capturées.</div>
-        </div>
-      )}
-      {/* CSS print : masque le contenu lors d'une impression/capture */}
-      <style>{`
-        @media print {
-          .protected-content { visibility: hidden !important; background: black !important; }
-        }
-        .protected-content {
-          -webkit-user-select: none;
-          user-select: none;
-          -webkit-touch-callout: none;
-        }
-      `}</style>
-      <div className="protected-content">
-        {children}
-      </div>
-    </div>
-  );
-}
 
 const C = { green:"#16a34a", lightGreen:"#f0fdf4", borderGreen:"#86efac", gray:"#6b7280", border:"#e5e7eb", bg:"#f8fafb" };
 
@@ -2022,7 +1953,6 @@ function AnalysisPanel({ match, onClose }) {
   const lines = renderAnalysis(analysis);
 
   return (
-    <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:"#f8fafb",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
         {/* Header */}
@@ -2094,7 +2024,6 @@ function AnalysisPanel({ match, onClose }) {
         </div>
       </div>
     </div>
-    </ProtectedContent>
   );
 }
 
@@ -2682,7 +2611,6 @@ function LineupPanel({ match, onClose }) {
   const currentTeam = lineup?.[activeTeam];
 
   return (
-    <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:"#f8fafb",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"92vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
 
@@ -2778,7 +2706,6 @@ function LineupPanel({ match, onClose }) {
         </div>
       </div>
     </div>
-    </ProtectedContent>
   );
 }
 
@@ -2816,7 +2743,6 @@ function HalftimePanel({ match, onClose }) {
   });
 
   return (
-    <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"88vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
         <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -2873,7 +2799,6 @@ function HalftimePanel({ match, onClose }) {
         </div>
       </div>
     </div>
-    </ProtectedContent>
   );
 }
 
@@ -2982,7 +2907,6 @@ function DebriefPanel({ bet, onClose }) {
   });
 
   return (
-    <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"85vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
         <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -3013,7 +2937,6 @@ function DebriefPanel({ bet, onClose }) {
         </div>
       </div>
     </div>
-    </ProtectedContent>
   );
 }
 
@@ -3228,7 +3151,6 @@ function CoachPanel({ user, bets, onClose }) {
   });
 
   return (
-    <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
         <div style={{background:"linear-gradient(135deg,#0f2d1a,#16a34a)",padding:"20px 22px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -3308,7 +3230,6 @@ function CoachPanel({ user, bets, onClose }) {
         </div>
       </div>
     </div>
-    </ProtectedContent>
   );
 }
 
