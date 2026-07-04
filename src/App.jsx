@@ -530,18 +530,35 @@ async function analyzeMatch(match) {
     ? `Analyse comme un insider de haut niveau : ${match.p1} vs ${match.p2} (${match.tournament}, ${match.date} à ${match.time}). Cotes actuelles: ${match.p1}@${match.c1}${match.cN?` | Nul@${match.cN}`:""} | ${match.p2}@${match.c2}. Source: ${match.bookmaker}. Déconstruis les cotes, cherche les compositions, croise toutes les données disponibles. Je veux l'analyse que les bookmakers font eux-mêmes en interne — pas ce qu'ils montrent au public.`
     : `Analyse comme un insider : ${match.p1} vs ${match.p2} (${match.tournament}, ${match.date} à ${match.time}). Cotes: ${match.p1}@${match.c1}${match.cN?` | Nul@${match.cN}`:""} | ${match.p2}@${match.c2}. Déconstruis les cotes, cherche tous les signaux physiques, mentaux, météo, contextuels. Trouve ce que le marché n a pas encore pricé.`;
 
-  const res = await fetch(`${BACKEND_URL}/api/analyze`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: [{ role: "user", content: userContent }],
-      system: systemPrompt,
-      max_tokens: isFootball ? 2000 : 1200,
-      useWebSearch: true,
-    })
-  });
-  const data = await res.json();
-  return data.text || "Analyse indisponible.";
+  // Réessaie jusqu'à 2 fois si le serveur est endormi
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 120000); // 2 min max
+      const res = await fetch(`${BACKEND_URL}/api/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          messages: [{ role: "user", content: userContent }],
+          system: systemPrompt,
+          max_tokens: isFootball ? 2000 : 1200,
+          useWebSearch: true,
+        })
+      });
+      clearTimeout(timeout);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return data.text || "Analyse indisponible.";
+    } catch(e) {
+      if (attempt === 0) {
+        // Première tentative échouée — attend 3s que le serveur se réveille
+        await new Promise(r => setTimeout(r, 3000));
+        continue;
+      }
+      throw new Error("Le serveur met du temps à répondre. Réessaie dans quelques secondes.");
+    }
+  }
 }
 
 const DEBRIEF_PROMPT = `Tu es le coach analytique de BetTrust. Ton rôle : disséquer un pari après le match avec la précision d'un chirurgien.
@@ -1240,7 +1257,37 @@ function HeroScreen({ onEnter }) {
   const [phase, setPhase] = useState(0);
   const [typedSlogan, setTypedSlogan] = useState("");
   const [showButtons, setShowButtons] = useState(false);
+  const [serverReady, setServerReady] = useState(false);
+  const [loadingStep, setLoadingStep] = useState(0);
   const slogan = "L'IA au service de vos décisions.";
+
+  const loadingSteps = [
+    { label: "Connexion aux serveurs IA", pct: 20 },
+    { label: "Chargement des marchés sportifs", pct: 45 },
+    { label: "Calibration des algorithmes", pct: 68 },
+    { label: "Synchronisation des cotes", pct: 85 },
+    { label: "Prêt à analyser", pct: 100 },
+  ];
+
+  // Réveille le serveur Render en arrière-plan dès que le Hero s'affiche
+  useEffect(() => {
+    const wakeServer = async () => {
+      try {
+        await fetch(`${BACKEND_URL}/`, { method: "GET" });
+      } catch(e) {}
+      setServerReady(true);
+    };
+    wakeServer();
+  }, []);
+
+  // Simule la progression de la barre de chargement
+  useEffect(() => {
+    const timings = [800, 1800, 2800, 3800, 5200];
+    const timers = timings.map((delay, i) =>
+      setTimeout(() => setLoadingStep(i + 1), delay)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, []);
 
   useEffect(() => {
     const t1 = setTimeout(() => setPhase(1), 400);
@@ -1330,13 +1377,40 @@ function HeroScreen({ onEnter }) {
         </div>
 
         {showButtons && (
-          <div style={{display:"flex",justifyContent:"center",gap:28,marginBottom:36,animation:"fadeUp 0.4s ease both"}}>
+          <div style={{display:"flex",justifyContent:"center",gap:28,marginBottom:28,animation:"fadeUp 0.4s ease both"}}>
             {[{val:"360°",label:"Analyse IA"},{val:"💎",label:"Value bets"},{val:"📡",label:"Radar du jour"}].map((s,i)=>(
               <div key={i} style={{textAlign:"center",animation:`fadeUp 0.4s ease ${i*0.08}s both`}}>
                 <div style={{fontSize:20,fontWeight:900,color:"#fff"}}>{s.val}</div>
                 <div style={{fontSize:10,color:"#6b7280",marginTop:3,fontWeight:600}}>{s.label}</div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Barre de chargement stylisée — réveille le serveur pendant l'animation */}
+        {showButtons && (
+          <div style={{width:"100%",marginBottom:24,animation:"fadeUp 0.4s ease 0.1s both"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <span style={{fontSize:11,color:"#4b5563",fontWeight:600}}>
+                {loadingStep < loadingSteps.length ? loadingSteps[loadingStep]?.label : "Prêt à analyser"}
+              </span>
+              <span style={{fontSize:11,color:loadingStep >= loadingSteps.length ? "#4ade80" : "#6b7280",fontWeight:700}}>
+                {loadingStep >= loadingSteps.length ? "✓ Prêt" : `${loadingSteps[Math.min(loadingStep, loadingSteps.length-1)]?.pct}%`}
+              </span>
+            </div>
+            <div style={{height:4,background:"rgba(255,255,255,0.1)",borderRadius:99,overflow:"hidden"}}>
+              <div style={{
+                height:"100%",
+                width:`${loadingStep >= loadingSteps.length ? 100 : loadingSteps[Math.min(loadingStep, loadingSteps.length-1)]?.pct || 0}%`,
+                background: loadingStep >= loadingSteps.length
+                  ? "linear-gradient(90deg,#4ade80,#16a34a)"
+                  : "linear-gradient(90deg,#16a34a,#4ade80,#16a34a)",
+                backgroundSize:"200% auto",
+                borderRadius:99,
+                transition:"width 0.8s cubic-bezier(.4,0,.2,1)",
+                animation: loadingStep < loadingSteps.length ? "shimmer 1.5s linear infinite" : "none",
+              }}/>
+            </div>
           </div>
         )}
 
