@@ -727,20 +727,98 @@ FORMAT STRICT :
 [Joueur — But%/Passe% — Marché recommandé — Justification]
 ---`;
 
+const LINEUP_JSON_PROMPT = `Tu es un scout professionnel. Pour ce match de football, tu dois retourner UNIQUEMENT un JSON valide (pas de texte avant ou après) avec la structure exacte suivante :
+
+{
+  "team1": {
+    "name": "Nom équipe 1",
+    "formation": "4-3-3",
+    "color": "#003399",
+    "players": [
+      {
+        "name": "Prénom Nom",
+        "position": "GK",
+        "number": 1,
+        "row": 0,
+        "col": 0,
+        "stats": "5J : 5 tit. | 450 min | G/A : 0/0",
+        "form": "Solide dans les cages, 2 clean sheets",
+        "physical": "100% fit",
+        "perso": "RAS",
+        "butPct": 0,
+        "passePct": 2,
+        "alert": false
+      }
+    ]
+  },
+  "team2": {
+    "name": "Nom équipe 2",
+    "formation": "4-4-2",
+    "color": "#cc0000",
+    "players": []
+  }
+}
+
+RÈGLES STRICTES :
+- position : GK, CB, LB, RB, LWB, RWB, CDM, CM, CAM, LM, RM, LW, RW, CF, ST
+- row : 0=gardien, 1=défenseurs, 2=milieux défensifs, 3=milieux, 4=milieux offensifs, 5=attaquants
+- col : position horizontale de 0 (gauche) à N (droite) selon nombre de joueurs dans cette ligne
+- butPct et passePct : entiers de 0 à 100
+- alert : true si butPct ou passePct > 70
+- Inclure TOUS les titulaires (11 par équipe) sauf gardiens si inconnus
+- Si composition officielle indisponible, utilise la composition probable la plus récente
+- Cherche en priorité les compositions sur les sites officiels et journaux sportifs
+- RETOURNE UNIQUEMENT LE JSON, RIEN D'AUTRE`;
+
 async function analyzeLineup(match) {
   const res = await fetch(`${BACKEND_URL}/api/analyze`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      messages: [{ role: "user", content: `Match : ${match.p1} vs ${match.p2} (${match.tournament}, ${match.date} à ${match.time}). Produis la fiche scout complète. Cherche les compositions officielles ou probables, les xG/xA individuels si disponibles, l état physique et mental de chaque joueur, et calcule les probabilités de but/passe décisive. Je veux les signaux que les bookmakers utilisent en interne pour fixer leurs limites de mise sur les paris joueurs.` }],
-      system: LINEUP_PROMPT,
-      max_tokens: 2500,
+      messages: [{ role: "user", content: `Match : ${match.p1} vs ${match.p2} (${match.tournament}, ${match.date} à ${match.time}). Cherche les compositions officielles ou probables sur internet. Retourne UNIQUEMENT le JSON demandé avec les 11 titulaires de chaque équipe, leur formation tactique exacte, et leurs stats sur les 5 derniers matchs.` }],
+      system: LINEUP_JSON_PROMPT,
+      max_tokens: 3000,
       useWebSearch: true,
     })
   });
   const data = await res.json();
-  return data.text || "Composition indisponible.";
+  // Parse le JSON retourné
+  try {
+    const text = data.text || "";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+  } catch(e) {}
+  return null;
 }
+
+// Calcule les positions (x, y) des joueurs sur le terrain selon la formation
+function getPlayerPositions(players, teamSide) {
+  // Groupe par row
+  const rows = {};
+  players.forEach(p => {
+    if (!rows[p.row]) rows[p.row] = [];
+    rows[p.row].push(p);
+  });
+
+  const positions = {};
+  const FIELD_W = 100; const FIELD_H = 100;
+
+  Object.entries(rows).forEach(([row, ps]) => {
+    const r = parseInt(row);
+    const n = ps.length;
+    const yBase = teamSide === "top"
+      ? [8, 22, 35, 48, 60][r] || 15 + r * 15
+      : [92, 78, 65, 52, 40][r] || 85 - r * 15;
+
+    ps.forEach((p, i) => {
+      const x = n === 1 ? 50 : 10 + (i / (n - 1)) * 80;
+      positions[p.name] = { x, y: yBase };
+    });
+  });
+  return positions;
+}
+
+
 
 // ─── STYLES ───────────────────────────────────────────────────────
 // ─── PROTECTION CAPTURE D'ÉCRAN ───────────────────────────────────
@@ -1745,181 +1823,128 @@ function AnalysisPanel({ match, onClose }) {
   const renderAnalysis = (text) => {
     if (!text) return null;
 
-    // Nettoie les markdown parasites
-    const clean = (s) => s
+    // Nettoyage agressif de tout le markdown
+    const cleanMd = (s) => s
+      .replace(/\*\*\*([^*]+)\*\*\*/g, '$1')
       .replace(/\*\*([^*]+)\*\*/g, '$1')
       .replace(/\*([^*]+)\*/g, '$1')
-      .replace(/#{1,3}\s*/g, '')
-      .replace(/^[-•]\s+/gm, '')
+      .replace(/~~([^~]+)~~/g, '$1')
+      .replace(/[`]/g, '')
+      .replace(/#{1,4}\s*/g, '')
+      .replace(/^[-•*]\s+/gm, '')
+      .replace(/^\d+\.\s+/gm, '')
+      .replace(/\|/g, ' ')
       .trim();
 
-    // Si le texte est trop court ou vide, affiche brut
-    if (text.trim().length < 20) {
-      return <div style={{fontSize:14,color:"#374151",lineHeight:1.7,padding:"8px 0"}}>{text}</div>;
-    }
+    // Nettoie TOUT le texte d'abord
+    const cleanedText = text.split('\n').map(cleanMd).join('\n');
 
-    const sections = [];
-    let current = null;
-    let hasStructure = false;
+    // Détecte les sections clés
+    const isVerdict = (l) => l.startsWith('⚡');
+    const isConfiance = (l) => l.startsWith('🎯 CONFIANCE') || l.match(/^confiance\s*:/i);
+    const isSignal = (l) => l.startsWith('🔍') || l.includes('VALUE BET') || l.includes('PIÈGE') || l.includes('Cote juste');
+    const isBest = (l) => l.startsWith('🏆') || l.startsWith('💰 LE MEILLEUR') || l.includes('MEILLEUR PARI');
+    const isWarning = (l) => l.startsWith('⚠️');
+    const isBetsTitle = (l) => l.startsWith('🎯 TOUS') || l.includes('PARIS RECOMMANDÉS');
+    const isBetItem = (l) => l.startsWith('→') || (l.match(/^[A-Z]/) && l.includes('@') && l.includes('—'));
+    const isSectionTitle = (l) => l.startsWith('📊') || l.startsWith('📋') || l.startsWith('👥') || l.startsWith('⚽');
 
-    text.split('\n').forEach(raw => {
-      const l = raw.trim();
-      if (!l || l === '---') return;
+    const lines = cleanedText.split('\n').filter(l => l.trim() && l.trim() !== '---');
+    const elements = [];
+    let i = 0;
 
-      if (l.startsWith('⚡') || l.startsWith('🎯 CONFIANCE') || l.startsWith('🔍 SIGNAL') ||
-          l.startsWith('📊') || l.startsWith('🎯 TOUS') || l.startsWith('🏆') ||
-          l.startsWith('💰 LE') || l.startsWith('⚠️') || l.startsWith('👥') || l.startsWith('📋')) {
-        hasStructure = true;
-      }
-    });
+    while (i < lines.length) {
+      const l = lines[i].trim();
 
-    // Si pas de structure reconnue → rendu ligne par ligne simple mais propre
-    if (!hasStructure) {
-      return (
-        <div style={{display:"flex",flexDirection:"column",gap:6}}>
-          {text.split('\n').map((raw, i) => {
-            const l = clean(raw);
-            if (!l) return <div key={i} style={{height:6}}/>;
-            const isTitle = l.match(/^[A-Z\u00C0-\u024F]{3,}/) || l.endsWith(':');
-            return (
-              <div key={i} style={{
-                fontSize: isTitle ? 13 : 13,
-                fontWeight: isTitle ? 700 : 400,
-                color: isTitle ? "#111827" : "#4b5563",
-                lineHeight: 1.65,
-                paddingTop: isTitle ? 6 : 0,
-              }}>{l}</div>
-            );
-          })}
-        </div>
-      );
-    }
-
-    text.split('\n').forEach(raw => {
-      const l = raw.trim();
-      if (!l || l === '---') return;
-
-      if (l.startsWith('⚡')) {
-        if (current) sections.push(current);
-        current = { type: 'verdict', text: clean(l) };
-      } else if (l.startsWith('🎯 CONFIANCE')) {
-        if (current) sections.push(current);
-        current = { type: 'confiance', text: clean(l) };
-      } else if (l.startsWith('🔍 SIGNAL')) {
-        if (current) sections.push(current);
-        current = { type: 'signal', text: clean(l) };
-      } else if (l.startsWith('📊') || l.startsWith('📋 MARCHÉS') || l.startsWith('📋 TOUS')) {
-        if (current) sections.push(current);
-        current = { type: 'section', title: clean(l), items: [] };
-      } else if (l.startsWith('🎯 TOUS LES PARIS')) {
-        if (current) sections.push(current);
-        current = { type: 'bets', title: 'Tous les paris recommandés', items: [] };
-      } else if (l.startsWith('🏆') || l.startsWith('💰 LE MEILLEUR')) {
-        if (current) sections.push(current);
-        current = { type: 'best', text: clean(l.replace(/🏆 LE MEILLEUR PARI DU MATCH\s*:?/,'').replace(/💰 LE MEILLEUR PARI DU MATCH\s*:?/,'').trim()), extras: [] };
-      } else if (l.startsWith('⚠️')) {
-        if (current) sections.push(current);
-        current = { type: 'warning', text: clean(l) };
-      } else if (l.startsWith('👥')) {
-        if (current) sections.push(current);
-        current = { type: 'compo', text: clean(l), items: [] };
-      } else if (l.startsWith('⚽ BUT') || l.startsWith('⚽ BUTEURS')) {
-        if (current) sections.push(current);
-        current = { type: 'section', title: clean(l), items: [] };
-      } else {
-        if (current) {
-          if (current.type === 'bets' || current.type === 'section' || current.type === 'compo') {
-            if (l) {
-              current.items = current.items || [];
-              current.items.push(clean(l.replace(/^[→\-]\s*/,'')));
-            }
-          } else if (current.type === 'best') {
-            if (l.startsWith('Marché') || l.startsWith('Cote') || l.startsWith('Confiance') || l.startsWith('Pourquoi')) {
-              current.extras = current.extras || [];
-              current.extras.push(clean(l));
-            } else if (l) {
-              current.text = current.text ? current.text + ' ' + clean(l) : clean(l);
-            }
-          } else {
-            if (l) current.text = current.text ? current.text + '\n' + clean(l) : clean(l);
-          }
-        } else if (l) {
-          // Texte orphelin → section générique
-          sections.push({ type: 'text', text: clean(l) });
-        }
-      }
-    });
-    if (current) sections.push(current);
-
-    return sections.map((s, i) => {
-      if (s.type === 'verdict') {
-        const isValue = s.text.includes('VALUE') || s.text.includes('value');
-        const isPiege = s.text.includes('PIÈGE') || s.text.includes('piège');
-        const bg = isValue ? 'linear-gradient(135deg,#052e16,#166534)' : isPiege ? 'linear-gradient(135deg,#450a0a,#dc2626)' : 'linear-gradient(135deg,#111827,#374151)';
-        return (
-          <div key={i} style={{background:bg,borderRadius:16,padding:"16px 18px",marginBottom:10}} className="anim-scalein">
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Verdict</div>
-            <div style={{fontSize:16,fontWeight:900,color:"#fff",lineHeight:1.3}}>{s.text.replace(/^⚡\s*/,'')}</div>
+      if (isVerdict(l)) {
+        const text = l.replace(/^⚡\s*/, '').replace(/VERDICT\s*:\s*/i, '');
+        const isVal = text.toUpperCase().includes('VALUE') || text.toUpperCase().includes('COBOLLI') || text.toUpperCase().includes('OUTSIDER');
+        const isPieg = text.toUpperCase().includes('PIÈGE') || text.toUpperCase().includes('PIEGE') || text.toUpperCase().includes('FAVORIT');
+        const bg = isVal ? 'linear-gradient(135deg,#052e16,#166534)' : isPieg ? 'linear-gradient(135deg,#450a0a,#991b1b)' : 'linear-gradient(135deg,#0f172a,#1e293b)';
+        elements.push(
+          <div key={i} style={{background:bg,borderRadius:16,padding:"18px 20px",marginBottom:12}} className="anim-scalein">
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.55)",fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>⚡ Verdict</div>
+            <div style={{fontSize:17,fontWeight:900,color:"#fff",lineHeight:1.4}}>{text}</div>
           </div>
         );
-      }
-      if (s.type === 'confiance') {
-        const num = s.text.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
-        const score = num ? parseFloat(num[1]) : null;
-        const pct = score ? (score/10*100) : 0;
-        const col = pct >= 70 ? C.green : pct >= 50 ? '#ca8a04' : '#dc2626';
-        return (
-          <div key={i} style={{background:"#f9fafb",border:`1.5px solid ${C.border}`,borderRadius:13,padding:"12px 16px",marginBottom:10}} className="anim-fadeup">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:score?8:0}}>
+
+      } else if (isConfiance(l)) {
+        const match = l.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
+        const score = match ? parseFloat(match[1]) : null;
+        const pct = score ? score * 10 : 0;
+        const col = pct >= 70 ? '#16a34a' : pct >= 50 ? '#ca8a04' : '#dc2626';
+        elements.push(
+          <div key={i} style={{background:"#fff",border:`1.5px solid ${C.border}`,borderRadius:14,padding:"14px 16px",marginBottom:10}} className="anim-fadeup">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:score?10:0}}>
               <span style={{fontSize:12,fontWeight:700,color:C.gray,textTransform:"uppercase",letterSpacing:0.8}}>Confiance</span>
-              <span style={{fontSize:16,fontWeight:900,color:col}}>{score ? `${score}/10` : s.text.replace(/^🎯 CONFIANCE\s*:\s*/,'')}</span>
+              <span style={{fontSize:20,fontWeight:900,color:col}}>{score ? `${score}/10` : l.replace(/.*confiance\s*:\s*/i,'')}</span>
             </div>
-            {score && <div style={{height:6,background:"#e5e7eb",borderRadius:99,overflow:"hidden"}}>
-              <div style={{height:"100%",width:`${pct}%`,background:col,borderRadius:99}}/>
+            {score && <div style={{height:8,background:"#f1f5f9",borderRadius:99,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${col},${col}cc)`,borderRadius:99,transition:"width 1s ease"}}/>
             </div>}
           </div>
         );
-      }
-      if (s.type === 'signal') {
-        const isValue = s.text.includes('💎') || s.text.includes('VALUE');
-        const isPiege = s.text.includes('🪤') || s.text.includes('PIÈGE');
-        const col = isValue ? C.green : isPiege ? '#dc2626' : '#ca8a04';
-        const bg = isValue ? C.lightGreen : isPiege ? '#fef2f2' : '#fffbeb';
-        const bord = isValue ? C.borderGreen : isPiege ? '#fca5a5' : '#fde68a';
-        const icon = isValue ? '💎' : isPiege ? '🪤' : '⚖️';
-        const label = isValue ? 'Value bet détecté' : isPiege ? 'Piège détecté' : 'Cote juste';
-        return (
-          <div key={i} style={{background:bg,border:`2px solid ${bord}`,borderRadius:13,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"flex-start",gap:10}} className="anim-fadeup">
-            <span style={{fontSize:22,flexShrink:0}}>{icon}</span>
+
+      } else if (isSignal(l)) {
+        const isVal = l.includes('💎') || l.toUpperCase().includes('VALUE');
+        const isPieg = l.includes('🪤') || l.toUpperCase().includes('PIÈGE') || l.toUpperCase().includes('PIEGE');
+        const col = isVal ? '#16a34a' : isPieg ? '#dc2626' : '#ca8a04';
+        const bg = isVal ? '#f0fdf4' : isPieg ? '#fef2f2' : '#fffbeb';
+        const bord = isVal ? '#86efac' : isPieg ? '#fca5a5' : '#fde68a';
+        const icon = isVal ? '💎' : isPieg ? '🪤' : '⚖️';
+        const label = isVal ? 'Value bet détecté' : isPieg ? 'Piège identifié' : 'Cote juste';
+        const detail = l.replace(/^🔍.*?:\s*/,'').replace(/💎|🪤|⚖️/g,'').replace(/VALUE BET|PIÈGE|Cote juste/gi,'').trim();
+        elements.push(
+          <div key={i} style={{background:bg,border:`2px solid ${bord}`,borderRadius:14,padding:"14px 16px",marginBottom:12,display:"flex",gap:12,alignItems:"flex-start"}} className="anim-fadeup">
+            <span style={{fontSize:28,lineHeight:1,flexShrink:0}}>{icon}</span>
             <div>
-              <div style={{fontSize:13,fontWeight:800,color:col,marginBottom:3}}>{label}</div>
-              <div style={{fontSize:12,color:col,opacity:0.85,lineHeight:1.5}}>{s.text.replace(/^🔍 SIGNAL MARCHÉ\s*:\s*/,'').replace(/💎|🪤|⚖️/g,'').trim()}</div>
+              <div style={{fontSize:14,fontWeight:900,color:col,marginBottom:4}}>{label}</div>
+              {detail && <div style={{fontSize:12,color:col,opacity:0.85,lineHeight:1.6}}>{detail}</div>}
             </div>
           </div>
         );
-      }
-      if (s.type === 'best') {
-        return (
-          <div key={i} style={{background:"linear-gradient(135deg,#052e16,#16a34a)",borderRadius:16,padding:"18px 20px",marginBottom:10,marginTop:4}} className="anim-scalein">
-            <div style={{fontSize:10,color:"#86efac",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🏆 Meilleur pari du match</div>
-            {s.text && <div style={{fontSize:15,color:"#fff",fontWeight:800,lineHeight:1.4,marginBottom:s.extras?.length?10:0}}>{s.text}</div>}
-            {s.extras?.map((e,j) => <div key={j} style={{fontSize:12,color:"#bbf7d0",marginTop:4,lineHeight:1.5}}>{e}</div>)}
+
+      } else if (isBest(l)) {
+        const title = l.replace(/^🏆\s*/,'').replace(/^💰\s*/,'').replace(/LE MEILLEUR PARI DU MATCH\s*:?\s*/i,'').trim();
+        const extras = [];
+        i++;
+        while (i < lines.length && !isVerdict(lines[i]) && !isSectionTitle(lines[i]) && !isWarning(lines[i]) && !isBetsTitle(lines[i])) {
+          if (lines[i].trim()) extras.push(lines[i].trim());
+          i++;
+        }
+        i--;
+        elements.push(
+          <div key={`best-${i}`} style={{background:"linear-gradient(135deg,#052e16,#16a34a)",borderRadius:16,padding:"18px 20px",marginBottom:12,marginTop:4}} className="anim-scalein">
+            <div style={{fontSize:10,color:"#86efac",fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>🏆 Meilleur pari du match</div>
+            {title && <div style={{fontSize:15,color:"#fff",fontWeight:800,lineHeight:1.5,marginBottom:extras.length?10:0}}>{title}</div>}
+            {extras.map((e,j) => <div key={j} style={{fontSize:12,color:"#bbf7d0",lineHeight:1.6,marginTop:4}}>{e}</div>)}
           </div>
         );
-      }
-      if (s.type === 'bets' && s.items?.length) {
-        return (
-          <div key={i} style={{marginBottom:12}} className="anim-fadeup">
-            <div style={{fontSize:11,fontWeight:800,color:"#7c3aed",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8,padding:"5px 10px",background:"#f5f3ff",borderRadius:8,display:"inline-block"}}>{s.title}</div>
-            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {s.items.map((item,j) => {
-                const conf = item.match(/confiance\s*:?\s*(\d+)\/10/i);
-                const isGood = item.includes('VALUE') || (conf && parseFloat(conf[1]) >= 7);
+
+      } else if (isBetsTitle(l)) {
+        const items = [];
+        i++;
+        while (i < lines.length && (isBetItem(lines[i]) || (lines[i].trim() && !isVerdict(lines[i]) && !isBest(lines[i]) && !isWarning(lines[i]) && !isSectionTitle(lines[i])))) {
+          if (lines[i].trim()) items.push(lines[i].trim());
+          i++;
+        }
+        i--;
+        elements.push(
+          <div key={`bets-${i}`} style={{marginBottom:14}} className="anim-fadeup">
+            <div style={{fontSize:11,fontWeight:800,color:"#7c3aed",textTransform:"uppercase",letterSpacing:1,marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+              <div style={{width:3,height:14,background:"#7c3aed",borderRadius:99}}/>
+              Tous les paris recommandés
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {items.map((item,j) => {
+                const confMatch = item.match(/(\d+)\/10/);
+                const conf = confMatch ? parseInt(confMatch[1]) : null;
+                const isGood = conf ? conf >= 7 : item.toUpperCase().includes('VALUE');
                 return (
-                  <div key={j} style={{background:isGood?C.lightGreen:"#f9fafb",border:`1.5px solid ${isGood?C.borderGreen:C.border}`,borderRadius:11,padding:"10px 14px"}}>
-                    <div style={{fontSize:13,color:isGood?"#166534":"#374151",fontWeight:600,lineHeight:1.5}}>{item}</div>
+                  <div key={j} style={{background:isGood?"#f0fdf4":"#fff",border:`1.5px solid ${isGood?"#86efac":C.border}`,borderRadius:12,padding:"12px 14px"}}>
+                    <div style={{fontSize:13,color:isGood?"#166534":"#374151",fontWeight:600,lineHeight:1.6}}>{item.replace(/^→\s*/,'')}</div>
                     {conf && <div style={{marginTop:6,height:4,background:"#e5e7eb",borderRadius:99,overflow:"hidden"}}>
-                      <div style={{height:"100%",width:`${parseFloat(conf[1])/10*100}%`,background:C.green,borderRadius:99}}/>
+                      <div style={{height:"100%",width:`${conf*10}%`,background:isGood?"#16a34a":"#ca8a04",borderRadius:99}}/>
                     </div>}
                   </div>
                 );
@@ -1927,45 +1952,53 @@ function AnalysisPanel({ match, onClose }) {
             </div>
           </div>
         );
-      }
-      if (s.type === 'section') {
-        return (
-          <div key={i} style={{marginBottom:12}} className="anim-fadeup">
-            <div style={{fontSize:11,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8,borderLeft:`3px solid ${C.green}`,paddingLeft:10}}>{s.title?.replace(/^📊\s*/,'').replace(/^⚽\s*/,'').replace(/^📋\s*/,'')}</div>
-            {s.items?.length > 0 && (
-              <div style={{background:"#f9fafb",borderRadius:12,padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
-                {s.items.map((item,j) => (
-                  <div key={j} style={{fontSize:13,color:"#374151",lineHeight:1.65,paddingBottom:j<s.items.length-1?6:0,borderBottom:j<s.items.length-1?`1px solid ${C.border}`:"none"}}>{item}</div>
+
+      } else if (isWarning(l)) {
+        const txt = l.replace(/^⚠️\s*/,'');
+        elements.push(
+          <div key={i} style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:12,padding:"12px 14px",marginBottom:10,display:"flex",gap:10}} className="anim-fadeup">
+            <span style={{fontSize:18,flexShrink:0}}>⚠️</span>
+            <div style={{fontSize:13,color:"#92400e",lineHeight:1.6}}>{txt}</div>
+          </div>
+        );
+
+      } else if (isSectionTitle(l)) {
+        const title = l.replace(/^[📊📋👥⚽]\s*/,'').replace(/ANALYSE INSIDER\s*:?/i,'Analyse insider').replace(/MARCHÉS?\s*AVEC\s*SIGNAL\s*:?/i,'Marchés avec signal');
+        const items = [];
+        i++;
+        while (i < lines.length && !isVerdict(lines[i]) && !isConfiance(lines[i]) && !isSignal(lines[i]) && !isBest(lines[i]) && !isWarning(lines[i]) && !isBetsTitle(lines[i]) && !isSectionTitle(lines[i])) {
+          if (lines[i].trim()) items.push(lines[i].trim());
+          i++;
+        }
+        i--;
+        elements.push(
+          <div key={`sec-${i}`} style={{marginBottom:14}} className="anim-fadeup">
+            <div style={{fontSize:11,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:3,height:14,background:"#16a34a",borderRadius:99}}/>
+              {title}
+            </div>
+            {items.length > 0 && (
+              <div style={{background:"#fff",borderRadius:12,border:`1px solid ${C.border}`,overflow:"hidden"}}>
+                {items.map((item,j) => (
+                  <div key={j} style={{padding:"10px 14px",borderBottom:j<items.length-1?`1px solid ${C.border}`:"none",fontSize:13,color:"#374151",lineHeight:1.65}}>{item}</div>
                 ))}
               </div>
             )}
           </div>
         );
-      }
-      if (s.type === 'warning') {
-        return (
-          <div key={i} style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:12,padding:"12px 14px",marginBottom:10,display:"flex",gap:10,alignItems:"flex-start"}} className="anim-fadeup">
-            <span style={{fontSize:18,flexShrink:0}}>⚠️</span>
-            <div style={{fontSize:13,color:"#92400e",lineHeight:1.5}}>{s.text.replace(/^⚠️\s*/,'')}</div>
-          </div>
+
+      } else if (l.trim()) {
+        // Texte générique propre
+        elements.push(
+          <div key={i} style={{fontSize:13,color:"#4b5563",lineHeight:1.7,padding:"3px 0"}}>{l}</div>
         );
       }
-      if (s.type === 'compo') {
-        return (
-          <div key={i} style={{background:"#f9fafb",border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:10}} className="anim-fadeup">
-            <div style={{fontSize:11,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>👥 Composition</div>
-            {s.items?.map((item,j) => <div key={j} style={{fontSize:13,color:"#4b5563",lineHeight:1.65}}>{item}</div>)}
-          </div>
-        );
-      }
-      if (s.type === 'text') {
-        return <div key={i} style={{fontSize:13,color:"#4b5563",lineHeight:1.65,marginBottom:4}}>{s.text}</div>;
-      }
-      return null;
-    });
+
+      i++;
+    }
+
+    return elements.length > 0 ? elements : <div style={{fontSize:13,color:"#4b5563",lineHeight:1.7}}>{cleanedText}</div>;
   };
-
-
 
   const lines = renderAnalysis(analysis);
 
@@ -2455,67 +2488,269 @@ function RadarBanner({ allMatches, onSelectMatch }) {
 function LineupPanel({ match, onClose }) {
   const [lineup, setLineup] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [activeTeam, setActiveTeam] = useState("team1");
 
   const run = async () => {
     setLoading(true);
     try { setLineup(await analyzeLineup(match)); }
-    catch(e) { setLineup("Erreur réseau. Réessaie."); }
+    catch(e) { setLineup(null); }
     setLoading(false);
   };
 
-  const formatLineup = (text) => text.split("\n").map((l, i) => {
-    if (l.startsWith("👥")) return <div key={i} style={{fontSize:15,fontWeight:900,color:"#111827",marginTop:16,marginBottom:8,paddingBottom:6,borderBottom:"2px solid #e5e7eb"}}>{l}</div>;
-    if (l.startsWith("🔵")||l.startsWith("🔴")) return <div key={i} style={{fontSize:13,fontWeight:800,color:"#111827",marginTop:10,marginBottom:2}}>{l}</div>;
-    if (l.includes("↳")) {
-      const isGoal = l.includes("But :") && l.includes("%");
-      const hasAlert = l.includes("🚨");
-      return <div key={i} style={{fontSize:12,color: hasAlert?"#dc2626":isGoal?"#374151":C.gray,fontWeight:hasAlert?800:400,lineHeight:1.6,marginLeft:12, background:hasAlert?"#fef2f2":"transparent",borderRadius:hasAlert?8:0,padding:hasAlert?"4px 8px":"0"}}>{l}</div>;
-    }
-    if (l.startsWith("🚨")) return <div key={i} style={{background:"#fef2f2",border:"2px solid #fca5a5",borderRadius:12,padding:"10px 13px",marginTop:8,marginBottom:4,fontSize:13,fontWeight:800,color:"#dc2626",lineHeight:1.5}}>{l}</div>;
-    if (l.startsWith("🏆")) return <div key={i} style={{fontSize:14,fontWeight:900,color:"#111827",marginTop:18,marginBottom:8,paddingTop:12,borderTop:"2px solid #e5e7eb"}}>{l}</div>;
-    if (l.startsWith("---")) return <hr key={i} style={{border:"none",borderTop:"1px solid #e5e7eb",margin:"8px 0"}}/>;
-    if (!l.trim()) return <div key={i} style={{height:4}}/>;
-    return <div key={i} style={{fontSize:12,color:C.gray,lineHeight:1.6}}>{l}</div>;
-  });
+  // Composant terrain tactique SVG
+  const TacticalField = ({ teamData, side }) => {
+    if (!teamData?.players?.length) return null;
+    const positions = getPlayerPositions(teamData.players, side);
+
+    return (
+      <div style={{position:"relative",width:"100%",aspectRatio:"2/3",borderRadius:12,overflow:"hidden",background:"#2d6a2d"}}>
+        {/* Terrain SVG */}
+        <svg width="100%" height="100%" viewBox="0 0 100 150" preserveAspectRatio="none" style={{position:"absolute",inset:0}}>
+          {/* Fond */}
+          <rect width="100" height="150" fill="#2d6a2d"/>
+          {/* Bandes de tonte */}
+          {[0,1,2,3,4,5,6,7,8,9].map(i=>(
+            <rect key={i} x="0" y={i*15} width="100" height="15" fill={i%2===0?"rgba(0,0,0,0.06)":"rgba(255,255,255,0.03)"}/>
+          ))}
+          {/* Lignes */}
+          <rect x="5" y="5" width="90" height="140" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="0.8"/>
+          <line x1="5" y1="75" x2="95" y2="75" stroke="rgba(255,255,255,0.7)" strokeWidth="0.8"/>
+          <circle cx="50" cy="75" r="12" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="0.7"/>
+          <circle cx="50" cy="75" r="1" fill="rgba(255,255,255,0.8)"/>
+          {/* Surface haut */}
+          <rect x="22" y="5" width="56" height="20" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.6"/>
+          <rect x="36" y="5" width="28" height="9" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5"/>
+          <circle cx="50" cy="17" r="1" fill="rgba(255,255,255,0.6)"/>
+          {/* Surface bas */}
+          <rect x="22" y="125" width="56" height="20" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.6"/>
+          <rect x="36" y="136" width="28" height="9" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5"/>
+          <circle cx="50" cy="133" r="1" fill="rgba(255,255,255,0.6)"/>
+          {/* Buts */}
+          <rect x="38" y="2" width="24" height="5" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="0.6"/>
+          <rect x="38" y="143" width="24" height="5" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="0.6"/>
+        </svg>
+
+        {/* Joueurs */}
+        {teamData.players.map((player, i) => {
+          const pos = positions[player.name];
+          if (!pos) return null;
+          const isSelected = selectedPlayer?.name === player.name;
+          const hasAlert = player.alert || player.butPct > 70 || player.passePct > 70;
+          const teamColor = teamData.color || "#1a56db";
+
+          return (
+            <div
+              key={i}
+              onClick={() => setSelectedPlayer(isSelected ? null : player)}
+              style={{
+                position:"absolute",
+                left:`${pos.x}%`,
+                top:`${pos.y}%`,
+                transform:"translate(-50%,-50%)",
+                display:"flex",
+                flexDirection:"column",
+                alignItems:"center",
+                gap:2,
+                cursor:"pointer",
+                zIndex:10,
+              }}
+            >
+              {/* Badge alerte */}
+              {hasAlert && (
+                <div style={{position:"absolute",top:-8,right:-4,width:12,height:12,background:"#dc2626",borderRadius:"50%",border:"1.5px solid #fff",fontSize:7,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,zIndex:11}}>!</div>
+              )}
+              {/* Cercle joueur */}
+              <div style={{
+                width:isSelected?34:28,
+                height:isSelected?34:28,
+                borderRadius:"50%",
+                background:isSelected?"#fff":teamColor,
+                border:isSelected?`3px solid ${teamColor}`:"2.5px solid rgba(255,255,255,0.9)",
+                display:"flex",
+                alignItems:"center",
+                justifyContent:"center",
+                fontSize:isSelected?11:9,
+                fontWeight:900,
+                color:isSelected?teamColor:"#fff",
+                boxShadow:isSelected?"0 0 12px rgba(255,255,255,0.8)":"0 2px 6px rgba(0,0,0,0.3)",
+                transition:"all 0.2s ease",
+              }}>
+                {player.number || player.name.split(" ").pop().slice(0,3).toUpperCase()}
+              </div>
+              {/* Nom */}
+              <div style={{
+                fontSize:7,
+                fontWeight:700,
+                color:"#fff",
+                textShadow:"0 1px 3px rgba(0,0,0,0.8)",
+                whiteSpace:"nowrap",
+                maxWidth:45,
+                overflow:"hidden",
+                textOverflow:"ellipsis",
+                textAlign:"center",
+                background:"rgba(0,0,0,0.35)",
+                borderRadius:4,
+                padding:"1px 3px",
+              }}>
+                {player.name.split(" ").pop()}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Panel joueur cliqué
+  const PlayerCard = ({ player, teamColor }) => {
+    if (!player) return null;
+    const butCol = player.butPct >= 70 ? "#dc2626" : player.butPct >= 50 ? "#ca8a04" : C.green;
+    const passeCol = player.passePct >= 70 ? "#dc2626" : player.passePct >= 50 ? "#ca8a04" : C.green;
+
+    return (
+      <div style={{background:"#fff",borderRadius:16,padding:"16px",marginTop:12,border:`2px solid ${teamColor||C.green}`}} className="anim-scalein">
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+          <div>
+            <div style={{fontSize:16,fontWeight:900,color:"#111827"}}>{player.name}</div>
+            <div style={{fontSize:12,color:C.gray,marginTop:2}}>{player.position} {player.number ? `· N°${player.number}` : ""}</div>
+          </div>
+          {player.alert && <div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:800,color:"#dc2626"}}>🚨 Signal fort</div>}
+        </div>
+
+        {/* Stats */}
+        <div style={{background:"#f9fafb",borderRadius:10,padding:"10px 12px",marginBottom:10,fontSize:12,color:"#374151",lineHeight:1.7}}>
+          {player.stats && <div style={{fontWeight:600}}>{player.stats}</div>}
+          {player.form && <div style={{color:"#4b5563",marginTop:4}}>{player.form}</div>}
+          {player.physical && <div style={{color:"#6b7280",fontSize:11,marginTop:2}}>💪 {player.physical}</div>}
+          {player.perso && player.perso !== "RAS" && <div style={{color:"#6b7280",fontSize:11,marginTop:2}}>📱 {player.perso}</div>}
+        </div>
+
+        {/* Probabilités */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div style={{background:player.butPct>=70?"#fef2f2":C.lightGreen,borderRadius:10,padding:"10px",textAlign:"center",border:`1.5px solid ${player.butPct>=70?"#fca5a5":C.borderGreen}`}}>
+            <div style={{fontSize:22,fontWeight:900,color:butCol}}>{player.butPct}%</div>
+            <div style={{fontSize:10,color:C.gray,fontWeight:600,marginTop:2}}>🎯 But</div>
+            <div style={{height:4,background:"#e5e7eb",borderRadius:99,marginTop:6,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${player.butPct}%`,background:butCol,borderRadius:99}}/>
+            </div>
+          </div>
+          <div style={{background:player.passePct>=70?"#fef2f2":C.lightGreen,borderRadius:10,padding:"10px",textAlign:"center",border:`1.5px solid ${player.passePct>=70?"#fca5a5":C.borderGreen}`}}>
+            <div style={{fontSize:22,fontWeight:900,color:passeCol}}>{player.passePct}%</div>
+            <div style={{fontSize:10,color:C.gray,fontWeight:600,marginTop:2}}>🅰️ Passe décisive</div>
+            <div style={{height:4,background:"#e5e7eb",borderRadius:99,marginTop:6,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${player.passePct}%`,background:passeCol,borderRadius:99}}/>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const currentTeam = lineup?.[activeTeam];
 
   return (
     <ProtectedContent>
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
-        <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:"#f8fafb",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"92vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
+
+        {/* Header */}
+        <div style={{background:"#fff",padding:"16px 20px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
           <div>
-            <div style={{fontSize:11,color:C.gray,fontWeight:600,textTransform:"uppercase",letterSpacing:0.8}}>👥 Compositions & Fiches joueurs</div>
-            <div style={{fontSize:16,fontWeight:900,color:"#111827"}}>{match.p1} vs {match.p2}</div>
-            <div style={{fontSize:12,color:C.gray,marginTop:2}}>{match.tournament} · {match.date} à {match.time}</div>
+            <div style={{fontSize:10,color:C.gray,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>⚽ Compositions tactiques</div>
+            <div style={{fontSize:15,fontWeight:900,color:"#111827"}}>{match.p1} <span style={{color:C.gray,fontWeight:400}}>vs</span> {match.p2}</div>
+            <div style={{fontSize:11,color:C.gray}}>{match.tournament} · {match.date}</div>
           </div>
-          <button onClick={onClose} style={{background:"#f3f4f6",border:"none",borderRadius:99,width:32,height:32,fontSize:17,cursor:"pointer"}}>✕</button>
+          <button onClick={onClose} style={{background:"#f3f4f6",border:"none",borderRadius:99,width:34,height:34,fontSize:16,cursor:"pointer"}}>✕</button>
         </div>
-        <div style={{padding:"18px 22px",overflowY:"auto",flex:1}}>
-          {!lineup&&!loading&&(
-            <div style={{textAlign:"center",padding:"28px 0"}}>
-              <div style={{fontSize:44,marginBottom:14}}>👥</div>
-              <div style={{fontSize:17,fontWeight:900,color:"#111827",marginBottom:8}}>Fiches joueurs 360°</div>
-              <div style={{fontSize:13,color:C.gray,marginBottom:10,lineHeight:1.6}}>Compositions · Stats 5 derniers matchs · Forme · Actualité perso</div>
-              <div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:10,padding:"10px 14px",marginBottom:20,fontSize:12,color:"#dc2626",fontWeight:600}}>
-                🚨 Les joueurs en quasi-certitude (But ou Passe &gt;70%) seront mis en avant automatiquement
-              </div>
-              <button onClick={run} style={{background:`linear-gradient(135deg,${C.green},#22c55e)`,color:"#fff",border:"none",borderRadius:12,padding:"12px 32px",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>Charger les compositions →</button>
+
+        <div style={{overflowY:"auto",flex:1,padding:"16px 18px"}}>
+          {!lineup && !loading && (
+            <div style={{textAlign:"center",padding:"32px 0"}}>
+              <div style={{fontSize:48,marginBottom:16}} className="anim-float">⚽</div>
+              <div style={{fontSize:18,fontWeight:900,color:"#111827",marginBottom:8}}>Compositions tactiques</div>
+              <div style={{fontSize:13,color:C.gray,marginBottom:24,lineHeight:1.7}}>Formation officielle · Joueurs positionnés sur le terrain · Stats individuelles · Pourcentages But & Passe</div>
+              <button onClick={run} className="btn-hover" style={{background:`linear-gradient(135deg,${C.green},#22c55e)`,color:"#fff",border:"none",borderRadius:14,padding:"14px 36px",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit"}}>
+                Charger les compositions →
+              </button>
             </div>
           )}
-          {loading&&(
+
+          {loading && (
             <div style={{textAlign:"center",padding:"36px 0"}}>
-              <div style={{fontSize:34,marginBottom:16}}>⚽</div>
-              <div style={{fontSize:15,fontWeight:800,color:"#111827",marginBottom:8}}>Recherche en cours...</div>
-              <div style={{fontSize:13,color:C.gray,lineHeight:1.9}}>Composition probable/officielle<br/>Stats 5 derniers matchs par joueur<br/>Actualité personnelle récente<br/>Calcul But% et Passe décisive%</div>
+              <style>{`@keyframes fieldPulse{0%,100%{opacity:1}50%{opacity:0.6}}`}</style>
+              <div style={{fontSize:52,marginBottom:16,display:"inline-block",animation:"fieldPulse 1.5s ease infinite"}}>🔍</div>
+              <div style={{fontSize:15,fontWeight:800,color:"#111827",marginBottom:12}}>Recherche des compositions...</div>
+              {["Détection de la formation","Recherche des titulaires","Analyse des stats individuelles","Calcul des probabilités"].map((s,i)=>(
+                <div key={i} style={{fontSize:13,color:C.gray,padding:"4px 0",animation:`stepFade 2s ease ${i*0.3}s infinite`}}>· {s}</div>
+              ))}
             </div>
           )}
-          {lineup&&!loading&&<div>{formatLineup(lineup)}</div>}
+
+          {lineup && !loading && (
+            <div>
+              {/* Sélecteur équipe */}
+              <div style={{display:"flex",gap:8,marginBottom:14}}>
+                {["team1","team2"].map(t => (
+                  <button key={t} onClick={()=>{setActiveTeam(t);setSelectedPlayer(null);}} style={{
+                    flex:1,padding:"10px 8px",borderRadius:11,border:`2px solid ${activeTeam===t?(lineup[t]?.color||C.green):C.border}`,
+                    background:activeTeam===t?(lineup[t]?.color||C.green)+"15":"#fff",
+                    color:activeTeam===t?(lineup[t]?.color||C.green):"#374151",
+                    fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit",
+                    transition:"all 0.2s",
+                  }}>
+                    {lineup[t]?.name || (t==="team1"?match.p1:match.p2)}
+                    {lineup[t]?.formation && <span style={{fontSize:10,fontWeight:600,marginLeft:6,opacity:0.7}}>{lineup[t].formation}</span>}
+                  </button>
+                ))}
+              </div>
+
+              {/* Terrain tactique */}
+              {currentTeam && (
+                <TacticalField
+                  teamData={currentTeam}
+                  side={activeTeam==="team1"?"top":"bottom"}
+                />
+              )}
+
+              {/* Fiche joueur cliqué */}
+              {selectedPlayer && (
+                <PlayerCard
+                  player={selectedPlayer}
+                  teamColor={currentTeam?.color}
+                />
+              )}
+
+              {!selectedPlayer && (
+                <div style={{textAlign:"center",padding:"12px 0",fontSize:12,color:C.gray}}>
+                  Appuie sur un joueur pour voir son analyse individuelle
+                </div>
+              )}
+
+              {/* Joueurs en alerte */}
+              {currentTeam?.players?.filter(p=>p.alert||p.butPct>70||p.passePct>70).length > 0 && (
+                <div style={{marginTop:12,background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:12,padding:"12px 14px"}}>
+                  <div style={{fontSize:12,fontWeight:800,color:"#dc2626",marginBottom:8}}>🚨 Signaux forts détectés</div>
+                  {currentTeam.players.filter(p=>p.alert||p.butPct>70||p.passePct>70).map((p,i)=>(
+                    <div key={i} onClick={()=>setSelectedPlayer(p)} style={{fontSize:13,color:"#374151",fontWeight:600,padding:"4px 0",cursor:"pointer",display:"flex",justifyContent:"space-between"}}>
+                      <span>{p.name}</span>
+                      <span style={{color:"#dc2626",fontWeight:800}}>
+                        {p.butPct>70?`But ${p.butPct}%`:""} {p.passePct>70?`Passe ${p.passePct}%`:""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
     </ProtectedContent>
   );
 }
+
+
 
 // ─── ANALYSE MI-TEMPS — PANEL ──────────────────────────────────────
 function HalftimePanel({ match, onClose }) {
