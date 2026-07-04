@@ -1358,6 +1358,99 @@ function AuthScreen({ onLogin, initialTab = "login" }) {
 }
 
 // ─── ÉCRAN DE CONSENTEMENT (à valider une fois après inscription) ──
+
+// ─── ÉCRAN D'EXCLUSIVITÉ (affiché une seule fois après le consentement) ──
+function ExclusivityScreen({ onContinue }) {
+  const competitions = [
+    { icon: "🏆", name: "Ligue 1", country: "France" },
+    { icon: "🏆", name: "Premier League", country: "Angleterre" },
+    { icon: "🏆", name: "La Liga", country: "Espagne" },
+    { icon: "🏆", name: "Bundesliga", country: "Allemagne" },
+    { icon: "🏆", name: "Serie A", country: "Italie" },
+    { icon: "🌍", name: "Champions League", country: "Europe" },
+    { icon: "🌍", name: "Europa League", country: "Europe" },
+    { icon: "🎾", name: "Wimbledon", country: "Grand Chelem" },
+    { icon: "🎾", name: "Roland-Garros", country: "Grand Chelem" },
+    { icon: "🎾", name: "US Open", country: "Grand Chelem" },
+    { icon: "🎾", name: "Australian Open", country: "Grand Chelem" },
+  ];
+
+  return (
+    <div style={{minHeight:"100vh",background:"#060f0a",fontFamily:"'Inter',system-ui,sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px 20px"}}>
+      <style>{`
+        @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes shine { from{background-position:-200% center} to{background-position:200% center} }
+      `}</style>
+
+      {/* Logo */}
+      <div style={{marginBottom:24,animation:"fadeUp 0.5s ease both"}}>
+        <BetTrustLogo size={56} variant="dark" />
+      </div>
+
+      {/* Titre */}
+      <div style={{textAlign:"center",marginBottom:8,animation:"fadeUp 0.5s ease 0.1s both",opacity:0}}>
+        <div style={{fontSize:11,color:"#16a34a",fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>
+          Positionnement exclusif
+        </div>
+        <div style={{fontSize:26,fontWeight:900,color:"#fff",letterSpacing:-0.5,lineHeight:1.2}}>
+          BetTrust analyse<br/>uniquement l'élite.
+        </div>
+      </div>
+
+      {/* Explication */}
+      <div style={{fontSize:14,color:"#6b7280",textAlign:"center",maxWidth:340,lineHeight:1.7,marginBottom:28,animation:"fadeUp 0.5s ease 0.2s both",opacity:0}}>
+        Notre IA est entraînée sur les données des compétitions où les marchés sont les plus liquides, les informations les plus fiables, et l'analyse la plus pertinente. Ailleurs, les données manquent — nous n'analyserons jamais au hasard.
+      </div>
+
+      {/* Séparateur */}
+      <div style={{width:40,height:2,background:"linear-gradient(90deg,transparent,#16a34a,transparent)",marginBottom:24,animation:"fadeUp 0.4s ease 0.25s both",opacity:0}} />
+
+      {/* Liste compétitions */}
+      <div style={{width:"100%",maxWidth:360,marginBottom:32,animation:"fadeUp 0.5s ease 0.3s both",opacity:0}}>
+        <div style={{fontSize:11,color:"#374151",fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:14,textAlign:"center"}}>
+          Compétitions couvertes
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {competitions.map((c,i)=>(
+            <div key={i} style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(22,163,74,0.2)",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:16}}>{c.icon}</span>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{c.name}</div>
+                <div style={{fontSize:10,color:"#6b7280"}}>{c.country}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Message exclusivité */}
+      <div style={{background:"rgba(22,163,74,0.08)",border:"1px solid rgba(22,163,74,0.2)",borderRadius:14,padding:"14px 18px",maxWidth:340,marginBottom:28,textAlign:"center",animation:"fadeUp 0.5s ease 0.4s both",opacity:0}}>
+        <div style={{fontSize:13,color:"#86efac",fontWeight:600,lineHeight:1.6}}>
+          💡 Les autres championnats ? Trop peu de données fiables pour analyser sans risque. Nous préférons ne rien dire plutôt que de mal analyser.
+        </div>
+      </div>
+
+      {/* Bouton */}
+      <button onClick={onContinue} style={{
+        width:"100%",maxWidth:340,
+        background:"linear-gradient(90deg,#16a34a,#22c55e,#16a34a)",
+        backgroundSize:"200% auto",
+        color:"#fff",border:"none",borderRadius:14,
+        padding:"16px 0",fontSize:16,fontWeight:800,
+        cursor:"pointer",fontFamily:"inherit",
+        animation:"fadeUp 0.5s ease 0.5s both, shine 3s linear 1s infinite",
+        opacity:0,
+      }}>
+        Accéder à BetTrust →
+      </button>
+
+      <div style={{fontSize:11,color:"#374151",marginTop:14,animation:"fadeUp 0.4s ease 0.6s both",opacity:0}}>
+        Ces compétitions représentent 90% du volume de paris mondial.
+      </div>
+    </div>
+  );
+}
+
 function ConsentScreen({ user, onAccept }) {
   const [checked, setChecked] = useState(false);
 
@@ -2421,6 +2514,9 @@ export default function BetTrust() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [consent, setConsent] = useState(null);
   const [consentLoaded, setConsentLoaded] = useState(false);
+  const [exclusivityShown, setExclusivityShown] = useState(
+    typeof localStorage !== "undefined" && localStorage.getItem("bt_excl_shown") === "true"
+  );
   const [showRatingPrompt, setShowRatingPrompt] = useState(false);
   const [ratingChecked, setRatingChecked] = useState(false);
   const [allMatches, setAllMatches] = useState([]); // tennis + football, pour le radar du jour
@@ -2491,6 +2587,13 @@ export default function BetTrust() {
 
   if (consentLoaded && !consent) {
     return <ConsentScreen user={user} onAccept={() => setConsent(new Date().toISOString())} />;
+  }
+
+  if (consent && !exclusivityShown) {
+    return <ExclusivityScreen onContinue={() => {
+      localStorage.setItem("bt_excl_shown", "true");
+      setExclusivityShown(true);
+    }} />;
   }
 
   if (subLoaded) {
