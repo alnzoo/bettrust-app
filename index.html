@@ -2,11 +2,56 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#16a34a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="BetTrust" />
+    <meta name="description" content="L'IA au service de vos décisions sportives" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-512.png" />
     <title>BetTrust — L'IA au service de vos décisions</title>
+    <style>
+      body { margin: 0; background: #060f0a; }
+      #splash {
+        position: fixed; inset: 0; background: #060f0a;
+        display: flex; align-items: center; justify-content: center;
+        flex-direction: column; gap: 16px; z-index: 9999;
+        transition: opacity 0.4s;
+      }
+      #splash.hidden { opacity: 0; pointer-events: none; }
+      #splash svg { width: 80px; height: 80px; border-radius: 20px; }
+      #splash span { color: #fff; font-size: 24px; font-weight: 900; font-family: system-ui; letter-spacing: -0.5px; }
+      #splash em { color: #4ade80; font-style: normal; }
+    </style>
   </head>
   <body>
+    <!-- Splash screen pendant le chargement -->
+    <div id="splash">
+      <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="80" height="80" rx="18" fill="#0B3B2E"/>
+        <path d="M8 12 H36 C46 12 46 28 36 28 H8 Z M8 28 H40 C52 28 52 46 38 46 H8 Z" fill="white"/>
+        <path d="M56 12 H96 M72 12 V46" stroke="white" stroke-width="7" stroke-linecap="round"/>
+        <path d="M62 58 L72 68 L94 46" stroke="#16A34A" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Bet<em>Trust</em></span>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // Cache le splash quand l'app est prête
+      window.addEventListener("load", () => {
+        setTimeout(() => {
+          const splash = document.getElementById("splash");
+          if (splash) { splash.classList.add("hidden"); setTimeout(() => splash.remove(), 400); }
+        }, 800);
+      });
+
+      // Enregistre le Service Worker
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      }
+    </script>
   </body>
 </html>
