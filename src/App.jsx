@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 // ─── CONFIG ───────────────────────────────────────────────────────
 // The Odds API — clé gratuite sur https://the-odds-api.com
 // 500 requêtes/mois en gratuit, largement suffisant pour commencer
-const ODDS_API_KEY = "e4bf1706a287a0cffec21fb16d5e6ae6"; // <- mets ta clé ici
+const ODDS_API_KEY = "REMPLACE_PAR_TA_CLE_API"; // <- mets ta clé ici
 const ODDS_BASE = "https://api.the-odds-api.com/v4";
 
 // Sports qu'on suit
@@ -71,67 +71,182 @@ function generateCoachName(email) {
   return `${firstName}.${initial}`;
 }
 
+// ─── SUPABASE ─────────────────────────────────────────────────────
+const SUPABASE_URL = "https://wcpsxgoposjouwyotbjn.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjcHN4Z29wb3Nqb3V3eW90YmpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxMTE2NzAsImV4cCI6MjA5ODY4NzY3MH0.MVMKaRrXRJS9cwZ7uB27D8SeWkkcbvk6XFKn0yWGeDw";
+
+// Client Supabase léger sans SDK (appels REST directs)
+const sb = {
+  headers: {
+    "Content-Type": "application/json",
+    "apikey": SUPABASE_ANON_KEY,
+    "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+  },
+
+  // Auth
+  async signUp(email, password, meta) {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+      method: "POST", headers: this.headers,
+      body: JSON.stringify({ email, password, data: meta }),
+    });
+    return r.json();
+  },
+  async signIn(email, password) {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST", headers: this.headers,
+      body: JSON.stringify({ email, password }),
+    });
+    return r.json();
+  },
+  async signOut(token) {
+    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: "POST",
+      headers: { ...this.headers, "Authorization": `Bearer ${token}` },
+    });
+  },
+
+  // Database
+  async upsert(table, data, token) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+      method: "POST",
+      headers: {
+        ...this.headers,
+        "Authorization": `Bearer ${token || SUPABASE_ANON_KEY}`,
+        "Prefer": "resolution=merge-duplicates",
+      },
+      body: JSON.stringify(data),
+    });
+    return r.ok;
+  },
+  async select(table, filter, token) {
+    const query = filter ? `?${filter}` : "";
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
+      headers: {
+        ...this.headers,
+        "Authorization": `Bearer ${token || SUPABASE_ANON_KEY}`,
+      },
+    });
+    return r.ok ? r.json() : [];
+  },
+  async update(table, filter, data, token) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${filter}`, {
+      method: "PATCH",
+      headers: {
+        ...this.headers,
+        "Authorization": `Bearer ${token || SUPABASE_ANON_KEY}`,
+        "Prefer": "return=representation",
+      },
+      body: JSON.stringify(data),
+    });
+    return r.ok ? r.json() : null;
+  },
+  async delete(table, filter, token) {
+    await fetch(`${SUPABASE_URL}/rest/v1/${table}?${filter}`, {
+      method: "DELETE",
+      headers: {
+        ...this.headers,
+        "Authorization": `Bearer ${token || SUPABASE_ANON_KEY}`,
+      },
+    });
+  },
+};
+
+// ─── FONCTIONS STOCKAGE (Supabase) ────────────────────────────────
 async function saveUser(user) {
-  try { await window.storage.set(`user:${user.email}`, JSON.stringify(user)); } catch(e) {}
-}
-async function getUser(email) {
-  try { const r = await window.storage.get(`user:${email}`); return r ? JSON.parse(r.value) : null; } catch(e) { return null; }
-}
-async function saveBet(email, bet) {
   try {
-    const key = `bets:${email}`;
-    let bets = [];
-    try { const r = await window.storage.get(key); if(r) bets = JSON.parse(r.value); } catch(e) {}
-    bets.unshift(bet);
-    await window.storage.set(key, JSON.stringify(bets));
+    await sb.upsert("profiles", {
+      id: user.id, email: user.email, name: user.name,
+      coach_name: user.coachName || generateCoachName(user.email),
+      created_at: user.createdAt || new Date().toISOString(),
+    }, user.token);
   } catch(e) {}
 }
-async function getBets(email) {
-  try { const r = await window.storage.get(`bets:${email}`); return r ? JSON.parse(r.value) : []; } catch(e) { return []; }
-}
-async function updateBet(email, betId, updates) {
+async function getUser(email) {
   try {
-    const key = `bets:${email}`;
-    let bets = [];
-    try { const r = await window.storage.get(key); if(r) bets = JSON.parse(r.value); } catch(e) {}
-    bets = bets.map(b => b.id === betId ? { ...b, ...updates } : b);
-    await window.storage.set(key, JSON.stringify(bets));
-    return bets;
+    const rows = await sb.select("profiles", `email=eq.${email}&limit=1`);
+    if (!rows || rows.length === 0) return null;
+    const r = rows[0];
+    return { email: r.email, name: r.name, coachName: r.coach_name, id: r.id };
+  } catch(e) { return null; }
+}
+async function saveBet(email, bet, token) {
+  try {
+    await sb.upsert("bets", { ...bet, user_email: email }, token);
+  } catch(e) {}
+}
+async function getBets(email, token) {
+  try {
+    const rows = await sb.select("bets", `user_email=eq.${encodeURIComponent(email)}&order=created_at.desc`, token);
+    return rows || [];
   } catch(e) { return []; }
 }
-async function saveSubscription(email, sub) {
-  try { await window.storage.set(`sub:${email}`, JSON.stringify(sub)); } catch(e) {}
+async function updateBet(email, betId, updates, token) {
+  try {
+    await sb.update("bets", `id=eq.${betId}&user_email=eq.${encodeURIComponent(email)}`, updates, token);
+    return getBets(email, token);
+  } catch(e) { return []; }
 }
-async function getSubscription(email) {
-  try { const r = await window.storage.get(`sub:${email}`); return r ? JSON.parse(r.value) : null; } catch(e) { return null; }
+async function saveSubscription(email, sub, token) {
+  try {
+    await sb.upsert("subscriptions", { user_email: email, ...sub }, token);
+  } catch(e) {}
 }
-async function saveLastSeen(email) {
-  try { await window.storage.set(`lastSeen:${email}`, new Date().toISOString()); } catch(e) {}
+async function getSubscription(email, token) {
+  try {
+    const rows = await sb.select("subscriptions", `user_email=eq.${encodeURIComponent(email)}&limit=1`, token);
+    return rows && rows.length > 0 ? rows[0] : null;
+  } catch(e) { return null; }
 }
-async function getLastSeen(email) {
-  try { const r = await window.storage.get(`lastSeen:${email}`); return r ? r.value : null; } catch(e) { return null; }
+async function saveLastSeen(email, token) {
+  try {
+    await sb.upsert("profiles", { email, last_seen: new Date().toISOString() }, token);
+  } catch(e) {}
 }
-async function saveConsent(email) {
-  try { await window.storage.set(`consent:${email}`, new Date().toISOString()); } catch(e) {}
+async function getLastSeen(email, token) {
+  try {
+    const rows = await sb.select("profiles", `email=eq.${email}&select=last_seen&limit=1`, token);
+    return rows && rows.length > 0 ? rows[0].last_seen : null;
+  } catch(e) { return null; }
 }
-async function getConsent(email) {
-  try { const r = await window.storage.get(`consent:${email}`); return r ? r.value : null; } catch(e) { return null; }
+async function saveConsent(email, token) {
+  try {
+    await sb.upsert("profiles", { email, consent_at: new Date().toISOString() }, token);
+  } catch(e) {}
 }
-async function saveRatingGiven(email) {
-  try { await window.storage.set(`ratingGiven:${email}`, new Date().toISOString()); } catch(e) {}
+async function getConsent(email, token) {
+  try {
+    const rows = await sb.select("profiles", `email=eq.${email}&select=consent_at&limit=1`, token);
+    return rows && rows.length > 0 ? rows[0].consent_at : null;
+  } catch(e) { return null; }
 }
-async function getRatingGiven(email) {
-  try { const r = await window.storage.get(`ratingGiven:${email}`); return r ? r.value : null; } catch(e) { return null; }
+async function saveRatingGiven(email, token) {
+  try {
+    await sb.upsert("profiles", { email, rating_given_at: new Date().toISOString() }, token);
+  } catch(e) {}
 }
-async function saveRatingDismissed(email) {
-  try { await window.storage.set(`ratingDismissed:${email}`, "true"); } catch(e) {}
+async function getRatingGiven(email, token) {
+  try {
+    const rows = await sb.select("profiles", `email=eq.${email}&select=rating_given_at&limit=1`, token);
+    return rows && rows.length > 0 ? rows[0].rating_given_at : null;
+  } catch(e) { return null; }
 }
-async function getRatingDismissed(email) {
-  try { const r = await window.storage.get(`ratingDismissed:${email}`); return r ? r.value : null; } catch(e) { return null; }
+async function saveRatingDismissed(email, token) {
+  try {
+    await sb.upsert("profiles", { email, rating_dismissed: true }, token);
+  } catch(e) {}
 }
-async function saveAppRating(email, rating, comment) {
-  try { await window.storage.set(`appRating:${email}`, JSON.stringify({ rating, comment, date: new Date().toISOString() })); } catch(e) {}
+async function getRatingDismissed(email, token) {
+  try {
+    const rows = await sb.select("profiles", `email=eq.${email}&select=rating_dismissed&limit=1`, token);
+    return rows && rows.length > 0 ? rows[0].rating_dismissed : null;
+  } catch(e) { return null; }
 }
+async function saveAppRating(email, rating, comment, token) {
+  try {
+    await sb.upsert("profiles", { email, app_rating: rating, app_rating_comment: comment }, token);
+  } catch(e) {}
+}
+
 
 // ─── ODDS API ─────────────────────────────────────────────────────
 async function fetchOddsForSport(sportKey) {
@@ -548,6 +663,76 @@ async function analyzeLineup(match) {
 }
 
 // ─── STYLES ───────────────────────────────────────────────────────
+// ─── PROTECTION CAPTURE D'ÉCRAN ───────────────────────────────────
+// Masque le contenu sensible dès qu'une capture est détectée.
+// Techniques combinées : CSS print-media, visibilitychange + blur event,
+// et overlay opaque sur les panels d'analyse.
+
+function useScreenshotProtection() {
+  const [isBlocked, setIsBlocked] = useState(false);
+
+  useEffect(() => {
+    // Méthode 1 : détecte quand la fenêtre perd le focus (screenshot sur mobile)
+    const handleBlur = () => setIsBlocked(true);
+    const handleFocus = () => setTimeout(() => setIsBlocked(false), 800);
+
+    // Méthode 2 : détecte visibilitychange (app en arrière-plan)
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") setIsBlocked(true);
+      else setTimeout(() => setIsBlocked(false), 800);
+    };
+
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
+
+  return isBlocked;
+}
+
+// Composant qui enveloppe le contenu sensible avec protection maximale
+function ProtectedContent({ children }) {
+  const isBlocked = useScreenshotProtection();
+
+  return (
+    <div style={{position:"relative", userSelect:"none", WebkitUserSelect:"none"}}>
+      {/* Overlay opaque déclenché lors d'une capture détectée */}
+      {isBlocked && (
+        <div style={{
+          position:"fixed", inset:0, zIndex:9999,
+          background:"#000",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          flexDirection:"column", gap:16,
+        }}>
+          <div style={{width:60,height:60,borderRadius:16,background:"#111",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>🔒</div>
+          <div style={{fontSize:16,fontWeight:800,color:"#fff",textAlign:"center"}}>Contenu protégé</div>
+          <div style={{fontSize:13,color:"#6b7280",textAlign:"center",maxWidth:260,lineHeight:1.5}}>Les analyses BetTrust sont exclusives et ne peuvent pas être capturées.</div>
+        </div>
+      )}
+      {/* CSS print : masque le contenu lors d'une impression/capture */}
+      <style>{`
+        @media print {
+          .protected-content { visibility: hidden !important; background: black !important; }
+        }
+        .protected-content {
+          -webkit-user-select: none;
+          user-select: none;
+          -webkit-touch-callout: none;
+        }
+      `}</style>
+      <div className="protected-content">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 const C = { green:"#16a34a", lightGreen:"#f0fdf4", borderGreen:"#86efac", gray:"#6b7280", border:"#e5e7eb", bg:"#f8fafb" };
 
 // ─── THÈMES PAR SPORT ──────────────────────────────────────────────
@@ -1035,23 +1220,75 @@ function AuthScreen({ onLogin, initialTab = "login" }) {
   const [tab, setTab] = useState(initialTab);
   const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [name, setName] = useState("");
   const [err, setErr] = useState(""); const [loading, setLoading] = useState(false);
+  const [confirmSent, setConfirmSent] = useState(false);
 
   const submit = async () => {
     setErr(""); setLoading(true);
     if (!email || !password) { setErr("Remplis tous les champs."); setLoading(false); return; }
+
     if (tab === "register") {
       if (!name) { setErr("Entre ton prénom."); setLoading(false); return; }
-      const ex = await getUser(email);
-      if (ex) { setErr("Email déjà utilisé."); setLoading(false); return; }
-      const u = { email, password, name, coachName: generateCoachName(email), createdAt: new Date().toISOString() };
-      await saveUser(u); onLogin(u);
+      if (password.length < 6) { setErr("Le mot de passe doit faire au moins 6 caractères."); setLoading(false); return; }
+
+      // Inscription via Supabase — envoie automatiquement un email de confirmation
+      const res = await sb.signUp(email, password, {
+        name,
+        coach_name: generateCoachName(email),
+      });
+
+      if (res.error) {
+        setErr(res.error.message === "User already registered"
+          ? "Email déjà utilisé. Essaie de te connecter."
+          : res.error.message || "Erreur lors de l'inscription.");
+        setLoading(false); return;
+      }
+
+      // Email de confirmation envoyé — on attend la validation
+      setConfirmSent(true);
+      setLoading(false);
+
     } else {
-      const u = await getUser(email);
-      if (!u || u.password !== password) { setErr("Email ou mot de passe incorrect."); setLoading(false); return; }
-      onLogin(u);
+      // Connexion via Supabase
+      const res = await sb.signIn(email, password);
+
+      if (res.error) {
+        setErr(res.error.message === "Email not confirmed"
+          ? "Confirme d'abord ton email — vérifie ta boîte mail."
+          : "Email ou mot de passe incorrect.");
+        setLoading(false); return;
+      }
+
+      const token = res.access_token;
+      const userData = {
+        id: res.user.id,
+        email: res.user.email,
+        name: res.user.user_metadata?.name || "Utilisateur",
+        coachName: res.user.user_metadata?.coach_name || generateCoachName(res.user.email),
+        token,
+      };
+
+      onLogin(userData);
     }
     setLoading(false);
   };
+
+  if (confirmSent) {
+    return (
+      <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter',system-ui,sans-serif"}}>
+        <div style={{background:"#fff",borderRadius:22,padding:"36px 28px",width:"100%",maxWidth:390,boxShadow:"0 8px 40px rgba(0,0,0,0.08)",textAlign:"center"}}>
+          <div style={{fontSize:50,marginBottom:16}}>📧</div>
+          <div style={{fontSize:20,fontWeight:900,color:"#111827",marginBottom:10}}>Vérifie ta boîte mail !</div>
+          <div style={{fontSize:14,color:C.gray,marginBottom:20,lineHeight:1.6}}>
+            Un email de confirmation a été envoyé à <strong>{email}</strong>.<br/>
+            Clique sur le lien dans l'email pour activer ton compte, puis reviens te connecter.
+          </div>
+          <button onClick={()=>{setConfirmSent(false);setTab("login");}} style={{width:"100%",background:`linear-gradient(135deg,${C.green},#22c55e)`,color:"#fff",border:"none",borderRadius:11,padding:"13px 0",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+            Se connecter →
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter',system-ui,sans-serif"}}>
@@ -1077,6 +1314,17 @@ function AuthScreen({ onLogin, initialTab = "login" }) {
         <button onClick={submit} style={{width:"100%",background:`linear-gradient(135deg,${C.green},#22c55e)`,color:"#fff",border:"none",borderRadius:11,padding:"13px 0",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"inherit",marginTop:4}}>
           {loading?"...":(tab==="login"?"Se connecter →":"Créer mon compte →")}
         </button>
+        {tab==="login" && (
+          <div style={{textAlign:"center",marginTop:12}}>
+            <button onClick={async()=>{
+              if(!email){setErr("Entre ton email d'abord.");return;}
+              await fetch(`${SUPABASE_URL}/auth/v1/recover`,{method:"POST",headers:sb.headers,body:JSON.stringify({email})});
+              setErr("Email de réinitialisation envoyé !");
+            }} style={{background:"none",border:"none",color:C.gray,fontSize:13,cursor:"pointer",fontFamily:"inherit",textDecoration:"underline"}}>
+              Mot de passe oublié ?
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1200,6 +1448,7 @@ function AnalysisPanel({ match, onClose }) {
     return <div key={i} style={{fontSize:13,color:"#4b5563",lineHeight:1.6}}>{l}</div>;
   });
   return (
+    <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"85vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1213,6 +1462,7 @@ function AnalysisPanel({ match, onClose }) {
         </div>
       </div>
     </div>
+    </ProtectedContent>
   );
 }
 
@@ -1288,6 +1538,55 @@ function getSubStatus(sub) {
 }
 
 // ─── NOTIFICATION DE RAPPEL (48h d'inactivité) ────────────────────
+// ─── PROMPT INSTALLATION PWA ───────────────────────────────────────
+function PWAInstallPrompt() {
+  const [prompt, setPrompt] = useState(null);
+  const [shown, setShown] = useState(false);
+  const [dismissed, setDismissed] = useState(
+    localStorage.getItem("pwa_dismissed") === "true"
+  );
+
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setPrompt(e);
+      setShown(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  if (!shown || dismissed || !prompt) return null;
+
+  const install = async () => {
+    prompt.prompt();
+    const { outcome } = await prompt.userChoice;
+    if (outcome === "accepted") setShown(false);
+    else { setDismissed(true); localStorage.setItem("pwa_dismissed", "true"); }
+  };
+
+  const dismiss = () => {
+    setDismissed(true);
+    localStorage.setItem("pwa_dismissed", "true");
+  };
+
+  return (
+    <div style={{background:"linear-gradient(135deg,#0f2d1a,#16a34a)",borderRadius:16,padding:"14px 16px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,boxShadow:"0 4px 16px rgba(22,163,74,0.3)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:28}}>📲</span>
+        <div>
+          <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>Installer BetTrust</div>
+          <div style={{fontSize:11,color:"#bbf7d0"}}>Accès rapide depuis ton écran d'accueil</div>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:8,flexShrink:0}}>
+        <button onClick={install} style={{background:"#fff",color:"#16a34a",border:"none",borderRadius:9,padding:"8px 14px",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Installer</button>
+        <button onClick={dismiss} style={{background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",borderRadius:9,padding:"8px 10px",fontWeight:600,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+      </div>
+    </div>
+  );
+}
+
 function InactivityBanner({ lastSeenISO, onDismiss }) {
   if (!lastSeenISO) return null;
   const hours = (Date.now() - new Date(lastSeenISO).getTime()) / (1000*60*60);
@@ -1600,6 +1899,7 @@ function LineupPanel({ match, onClose }) {
   });
 
   return (
+    <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1633,6 +1933,7 @@ function LineupPanel({ match, onClose }) {
         </div>
       </div>
     </div>
+    </ProtectedContent>
   );
 }
 
@@ -1668,6 +1969,7 @@ function HalftimePanel({ match, onClose }) {
   });
 
   return (
+    <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"88vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1724,6 +2026,7 @@ function HalftimePanel({ match, onClose }) {
         </div>
       </div>
     </div>
+    </ProtectedContent>
   );
 }
 
@@ -1832,6 +2135,7 @@ function DebriefPanel({ bet, onClose }) {
   });
 
   return (
+    <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"85vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1862,6 +2166,7 @@ function DebriefPanel({ bet, onClose }) {
         </div>
       </div>
     </div>
+    </ProtectedContent>
   );
 }
 
@@ -1897,6 +2202,7 @@ function CoachPanel({ user, bets, onClose }) {
   });
 
   return (
+    <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
         <div style={{background:"linear-gradient(135deg,#0f2d1a,#16a34a)",padding:"20px 22px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1976,6 +2282,7 @@ function CoachPanel({ user, bets, onClose }) {
         </div>
       </div>
     </div>
+    </ProtectedContent>
   );
 }
 
@@ -2070,6 +2377,7 @@ export default function BetTrust() {
   const [tab, setTab] = useState("matches");
   const [sport, setSport] = useState("tennis");
   const [matches, setMatches] = useState([]);
+  const [search, setSearch] = useState("");
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [apiError, setApiError] = useState(false);
   const [analysisTarget, setAnalysisTarget] = useState(null);
@@ -2208,6 +2516,7 @@ export default function BetTrust() {
         {tab==="matches" ? (
           <div>
             {!bannerDismissed && <InactivityBanner lastSeenISO={lastSeen} onDismiss={()=>setBannerDismissed(true)} />}
+            <PWAInstallPrompt />
 
             <RadarBanner allMatches={allMatches} onSelectMatch={(m)=>{ setSport(m.sport); setAnalysisTarget(m); }} />
 
@@ -2242,10 +2551,24 @@ export default function BetTrust() {
 
 
             {/* SPORT TABS */}
-            <div style={{display:"flex",gap:6,background:"rgba(255,255,255,0.18)",borderRadius:12,padding:4,marginBottom:18,width:"fit-content",backdropFilter:"blur(4px)"}}>
+            <div style={{display:"flex",gap:6,background:"rgba(255,255,255,0.18)",borderRadius:12,padding:4,marginBottom:14,width:"fit-content",backdropFilter:"blur(4px)"}}>
               {[{k:"tennis",l:"🎾 Tennis"},{k:"football",l:"⚽ Football"}].map(t=>(
-                <button key={t.k} onClick={()=>setSport(t.k)} style={{padding:"8px 20px",borderRadius:9,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"inherit",background:sport===t.k?"#fff":"transparent",color:sport===t.k?THEMES[t.k].accent:"rgba(255,255,255,0.85)",boxShadow:sport===t.k?"0 1px 6px rgba(0,0,0,0.15)":"none",transition:"all 0.15s"}}>{t.l}</button>
+                <button key={t.k} onClick={()=>{setSport(t.k);setSearch("");}} style={{padding:"8px 20px",borderRadius:9,border:"none",cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"inherit",background:sport===t.k?"#fff":"transparent",color:sport===t.k?THEMES[t.k].accent:"rgba(255,255,255,0.85)",boxShadow:sport===t.k?"0 1px 6px rgba(0,0,0,0.15)":"none",transition:"all 0.15s"}}>{t.l}</button>
               ))}
+            </div>
+
+            {/* BARRE DE RECHERCHE */}
+            <div style={{position:"relative",marginBottom:16}}>
+              <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:16,pointerEvents:"none"}}>🔍</span>
+              <input
+                value={search}
+                onChange={e=>setSearch(e.target.value)}
+                placeholder={`Rechercher un match ${sport==="tennis"?"de tennis":"de football"}...`}
+                style={{width:"100%",background:"rgba(255,255,255,0.92)",backdropFilter:"blur(6px)",border:"1.5px solid rgba(255,255,255,0.6)",borderRadius:12,padding:"11px 14px 11px 38px",fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",color:"#111827"}}
+              />
+              {search && (
+                <button onClick={()=>setSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",fontSize:16,cursor:"pointer",color:C.gray}}>✕</button>
+              )}
             </div>
 
             {loadingMatches ? (
@@ -2270,7 +2593,9 @@ export default function BetTrust() {
                     50%     { box-shadow: 0 0 12px 3px rgba(22,163,74,0.25); }
                   }
                 `}</style>
-                {matches.map((match, idx)=>{
+                {matches
+                  .filter(match => !search || `${match.p1} ${match.p2} ${match.tournament}`.toLowerCase().includes(search.toLowerCase()))
+                  .map((match, idx)=>{
                   const opts=[{label:match.p1,cote:match.c1},...(match.cN?[{label:"Nul",cote:match.cN}]:[]),{label:match.p2,cote:match.c2}];
                   const best = opts.reduce((a,b)=>a.cote<b.cote?a:b);
                   const opponentCote = best.cote===match.c1 ? match.c2 : match.c1;
