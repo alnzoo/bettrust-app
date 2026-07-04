@@ -792,6 +792,89 @@ function ProtectedContent({ children }) {
 
 const C = { green:"#16a34a", lightGreen:"#f0fdf4", borderGreen:"#86efac", gray:"#6b7280", border:"#e5e7eb", bg:"#f8fafb" };
 
+// ─── ANIMATIONS GLOBALES ───────────────────────────────────────────
+function GlobalAnimations() {
+  return (
+    <style>{`
+      /* Entrées */
+      @keyframes fadeUp    { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+      @keyframes fadeDown  { from{opacity:0;transform:translateY(-14px)} to{opacity:1;transform:translateY(0)} }
+      @keyframes fadeIn    { from{opacity:0} to{opacity:1} }
+      @keyframes scaleIn   { from{opacity:0;transform:scale(0.88)} to{opacity:1;transform:scale(1)} }
+      @keyframes slideLeft { from{opacity:0;transform:translateX(24px)} to{opacity:1;transform:translateX(0)} }
+      @keyframes slideUp   { from{transform:translateY(100%)} to{transform:translateY(0)} }
+
+      /* Looping */
+      @keyframes pulse     { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.75;transform:scale(1.06)} }
+      @keyframes float     { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+      @keyframes shimmer   { from{background-position:-200% center} to{background-position:200% center} }
+      @keyframes spin      { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+      @keyframes bounceIn  { 0%{transform:scale(0.6);opacity:0} 60%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
+      @keyframes ripple    { 0%{transform:scale(0);opacity:0.6} 100%{transform:scale(2.5);opacity:0} }
+
+      /* Classes utilitaires */
+      .anim-fadeup   { animation: fadeUp   0.4s cubic-bezier(.34,1.2,.64,1) both; }
+      .anim-fadein   { animation: fadeIn   0.35s ease both; }
+      .anim-scalein  { animation: scaleIn  0.35s cubic-bezier(.34,1.3,.64,1) both; }
+      .anim-float    { animation: float    3s ease-in-out infinite; }
+      .anim-pulse    { animation: pulse    2s ease-in-out infinite; }
+      .anim-bounce   { animation: bounceIn 0.5s cubic-bezier(.34,1.56,.64,1) both; }
+
+      /* Hover interactif sur boutons */
+      .btn-hover { transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease; }
+      .btn-hover:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+      .btn-hover:active { transform: translateY(0) scale(0.97); }
+
+      /* Hover sur cartes de match */
+      .card-hover { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+      .card-hover:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(0,0,0,0.14); }
+
+      /* Tabs avec slide indicator */
+      .tab-active { position: relative; }
+      .tab-active::after {
+        content: '';
+        position: absolute;
+        bottom: -2px; left: 0; right: 0;
+        height: 2.5px;
+        background: #16a34a;
+        border-radius: 99px;
+        animation: fadeIn 0.2s ease;
+      }
+
+      /* Skeleton loading shimmer */
+      .skeleton {
+        background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+        background-size: 200% auto;
+        animation: shimmer 1.4s linear infinite;
+        border-radius: 8px;
+      }
+
+      /* Notification badge pulse */
+      .badge-pulse { animation: pulse 1.8s ease-in-out infinite; }
+
+      /* Panel slide-up depuis le bas */
+      .panel-slidein { animation: slideUp 0.38s cubic-bezier(.32,1.2,.64,1) both; }
+
+      /* Stagger delays */
+      .delay-1 { animation-delay: 0.07s; }
+      .delay-2 { animation-delay: 0.14s; }
+      .delay-3 { animation-delay: 0.21s; }
+      .delay-4 { animation-delay: 0.28s; }
+      .delay-5 { animation-delay: 0.35s; }
+
+      /* Smooth scroll */
+      * { scroll-behavior: smooth; }
+
+      /* Transitions globales */
+      button { transition: opacity 0.15s ease, transform 0.15s ease; }
+      button:active { opacity: 0.85; transform: scale(0.97); }
+      input, textarea { transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+      input:focus, textarea:focus { box-shadow: 0 0 0 3px rgba(22,163,74,0.15); }
+    `}</style>
+  );
+}
+
+
 // ─── THÈMES PAR SPORT ──────────────────────────────────────────────
 // Football : pelouse stylisée, vert profond / blanc craie
 // Tennis : terre battue, ocre/terracotta / blanc craie
@@ -1578,87 +1661,278 @@ function RatingPrompt({ user, onDone }) {
 function AnalysisPanel({ match, onClose }) {
   const [analysis, setAnalysis] = useState(null); const [loading, setLoading] = useState(false);
   const run = async () => { setLoading(true); try { setAnalysis(await analyzeMatch(match)); } catch(e) { setAnalysis("Erreur réseau."); } setLoading(false); };
-  const lines = (analysis||"").split("\n").map((l,i)=>{
-    if(l.startsWith("👥")) return <div key={i} style={{fontSize:13,fontWeight:700,color:"#374151",background:"#f9fafb",border:`1.5px solid ${C.border}`,borderRadius:9,padding:"9px 12px",marginBottom:10,lineHeight:1.5}}>{l}</div>;
-    if(l.startsWith("⚡")) return <div key={i} style={{fontSize:16,fontWeight:900,color:"#111827",marginBottom:6}}>{l}</div>;
-    if(l.startsWith("🎯 CONFIANCE")) return <div key={i} style={{fontSize:14,fontWeight:700,color:C.green,marginBottom:6}}>{l}</div>;
-    if(l.startsWith("🔍 SIGNAL")) {
-      const isTrap = l.includes("🪤"); const isValue = l.includes("💎");
-      const col = isTrap ? "#dc2626" : isValue ? "#0ea5e9" : "#6b7280";
-      const bg = isTrap ? "#fef2f2" : isValue ? "#eff6ff" : "#f9fafb";
-      const bord = isTrap ? "#fca5a5" : isValue ? "#93c5fd" : "#e5e7eb";
-      return <div key={i} style={{fontSize:13,fontWeight:700,color:col,background:bg,border:`1.5px solid ${bord}`,borderRadius:9,padding:"9px 12px",marginBottom:10}}>{l}</div>;
-    }
-    if(l.startsWith("📋 MARCHÉS")) return <div key={i} style={{fontSize:13,fontWeight:800,color:"#7c3aed",marginTop:14,marginBottom:6,textTransform:"uppercase",letterSpacing:0.4}}>{l}</div>;
-    if(l.startsWith("⚽")||l.startsWith("🎯 TIRS")) return <div key={i} style={{fontSize:13,fontWeight:700,color:"#111827",background:"#fef9c3",border:"1.5px solid #fde047",borderRadius:9,padding:"9px 12px",marginTop:8,marginBottom:4,lineHeight:1.5}}>{l}</div>;
-    if(l.startsWith("🏆 LE MEILLEUR")) return (
-      <div key={i} style={{background:"linear-gradient(135deg,#0f2d1a,#16a34a)",borderRadius:14,padding:"16px 18px",marginTop:14,marginBottom:4}}>
-        <div style={{fontSize:13,fontWeight:900,color:"#86efac",marginBottom:6}}>🏆 LE MEILLEUR PARI DU MATCH</div>
-        <div style={{fontSize:14,color:"#fff",fontWeight:700,lineHeight:1.5}}>{l.replace("🏆 LE MEILLEUR PARI DU MATCH :","").trim()}</div>
-      </div>
-    );
-    if(l.startsWith("🎯 TOUS LES PARIS")) return <div key={i} style={{fontSize:13,fontWeight:800,color:"#7c3aed",background:"#f5f3ff",border:"1.5px solid #ddd6fe",borderRadius:9,padding:"8px 12px",marginTop:14,marginBottom:6}}>{l}</div>;
-    if(l.startsWith("→ ")) return (
-      <div key={i} style={{background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:10,padding:"9px 13px",marginBottom:6,fontSize:13,color:"#166534",fontWeight:600,lineHeight:1.5}}>
-        {l}
-      </div>
-    );
-    if(l.startsWith("Marché :")) return <div key={i} style={{fontSize:13,color:"#fff",fontWeight:700,marginTop:4}}>{l}</div>;
-    if(l.startsWith("Pourquoi")) return <div key={i} style={{fontSize:12,color:"#bbf7d0",marginTop:4,fontStyle:"italic"}}>{l}</div>;
-    if(l.startsWith("💰")) return <div key={i} style={{fontSize:14,fontWeight:700,color:"#0ea5e9",background:"#f0f9ff",borderRadius:8,padding:"8px 12px",marginTop:10,marginBottom:12}}>{l}</div>;
-    if(l.startsWith("📊")||l.startsWith("⚠️")) return <div key={i} style={{fontSize:13,fontWeight:800,color:"#374151",marginTop:10,marginBottom:4}}>{l}</div>;
-    if(l.startsWith("---")) return <hr key={i} style={{border:"none",borderTop:`1px solid ${C.border}`,margin:"8px 0"}}/>;
-    if(!l.trim()) return <div key={i} style={{height:4}}/>;
-    return <div key={i} style={{fontSize:13,color:"#4b5563",lineHeight:1.6}}>{l}</div>;
-  });
-  return (
-    <ProtectedContent>
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"85vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-        <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div><div style={{fontSize:11,color:C.gray,fontWeight:600,textTransform:"uppercase",letterSpacing:0.8}}>{match.sport==="football"?"Analyse Football Approfondie":"Analyse IA 360°"}</div><div style={{fontSize:16,fontWeight:900,color:"#111827"}}>{match.p1} vs {match.p2}</div><div style={{fontSize:12,color:C.gray,marginTop:2}}>{match.tournament} · {match.date} à {match.time} · via {match.bookmaker}</div></div>
-          <button onClick={onClose} style={{background:"#f3f4f6",border:"none",borderRadius:99,width:32,height:32,fontSize:17,cursor:"pointer"}}>✕</button>
-        </div>
-        <div style={{padding:"18px 22px",overflowY:"auto",flex:1}}>
-          {!analysis&&!loading&&(<div style={{textAlign:"center",padding:"28px 0"}}><div style={{fontSize:44,marginBottom:14}}>{match.sport==="football"?"⚽":"🧠"}</div><div style={{fontSize:17,fontWeight:900,color:"#111827",marginBottom:8}}>{match.sport==="football"?"Analyse multi-marchés":"Analyse ultra-poussée"}</div><div style={{fontSize:13,color:C.gray,marginBottom:22,lineHeight:1.6}}>{match.sport==="football"?"Composition · Résultat · Mi-temps · Buts · Buteurs · Tirs cadrés":"Forme · Physique · Mental · Météo · Réseaux sociaux · Stats cachées"}</div><button onClick={run} style={{background:`linear-gradient(135deg,${C.green},#22c55e)`,color:"#fff",border:"none",borderRadius:12,padding:"12px 32px",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>Lancer l'analyse →</button></div>)}
-          {loading&&(<div style={{textAlign:"center",padding:"36px 0"}}>
-            <style>{`
-              @keyframes loupeSearch {
-                0%   { transform: translate(0,0) rotate(0deg); }
-                20%  { transform: translate(12px,-8px) rotate(15deg); }
-                40%  { transform: translate(-8px,10px) rotate(-10deg); }
-                60%  { transform: translate(10px,6px) rotate(20deg); }
-                80%  { transform: translate(-6px,-10px) rotate(-5deg); }
-                100% { transform: translate(0,0) rotate(0deg); }
-              }
-              @keyframes loupePulse {
-                0%,100% { opacity:1; transform: scale(1); }
-                50%     { opacity:0.7; transform: scale(1.12); }
-              }
-              @keyframes stepFade {
-                0%   { opacity:0.3; }
-                50%  { opacity:1; }
-                100% { opacity:0.3; }
-              }
-            `}</style>
-            <div style={{fontSize:52,marginBottom:20,display:"inline-block",animation:"loupeSearch 2.4s ease-in-out infinite"}}>🔍</div>
-            <div style={{fontSize:15,fontWeight:800,color:"#111827",marginBottom:16}}>Analyse en cours...</div>
-            <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:260,margin:"0 auto"}}>
-              {[
-                {icon:"📊",text:"Déconstruction des cotes"},
-                {icon:"🧬",text:"Analyse physique & mentale"},
-                {icon:"🌦️",text:"Conditions & contexte"},
-                {icon:"💎",text:"Détection value & pièges"},
-                {icon:"🏆",text:"Verdict final multi-marchés"},
-              ].map((s,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"#f9fafb",borderRadius:10,padding:"8px 14px",animation:`stepFade 2s ease-in-out ${i*0.4}s infinite`}}>
-                  <span style={{fontSize:16}}>{s.icon}</span>
-                  <span style={{fontSize:13,color:"#374151",fontWeight:500}}>{s.text}</span>
-                </div>
+  // Rendu propre et visuel de l'analyse
+  const renderAnalysis = (text) => {
+    if (!text) return null;
+    // Nettoie les markdown parasites (**, ##, ###, *, _)
+    const clean = (s) => s
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/#{1,3}\s*/g, '')
+      .replace(/^[-•]\s+/gm, '')
+      .trim();
+
+    const sections = [];
+    let current = null;
+
+    text.split('\n').forEach(raw => {
+      const l = raw.trim();
+      if (!l || l === '---') return;
+
+      // Sections titre
+      if (l.startsWith('⚡')) {
+        if (current) sections.push(current);
+        current = { type: 'verdict', text: clean(l) };
+      } else if (l.startsWith('🎯 CONFIANCE')) {
+        if (current) sections.push(current);
+        current = { type: 'confiance', text: clean(l) };
+      } else if (l.startsWith('🔍 SIGNAL')) {
+        if (current) sections.push(current);
+        current = { type: 'signal', text: clean(l) };
+      } else if (l.startsWith('📊 ANALYSE') || l.startsWith('📊 DÉCODAGE')) {
+        if (current) sections.push(current);
+        current = { type: 'section', title: clean(l), items: [] };
+      } else if (l.startsWith('🎯 TOUS LES PARIS')) {
+        if (current) sections.push(current);
+        current = { type: 'bets', title: 'Tous les paris recommandés', items: [] };
+      } else if (l.startsWith('🏆 LE MEILLEUR') || l.startsWith('💰 LE MEILLEUR')) {
+        if (current) sections.push(current);
+        current = { type: 'best', text: clean(l.replace(/🏆 LE MEILLEUR PARI DU MATCH\s*:?/,'').replace(/💰 LE MEILLEUR PARI DU MATCH\s*:?/,'').trim()), extras: [] };
+      } else if (l.startsWith('⚠️')) {
+        if (current) sections.push(current);
+        current = { type: 'warning', text: clean(l) };
+      } else if (l.startsWith('👥')) {
+        if (current) sections.push(current);
+        current = { type: 'compo', text: clean(l), items: [] };
+      } else if (l.startsWith('📋 MARCHÉS') || l.startsWith('📋 TOUS')) {
+        if (current) sections.push(current);
+        current = { type: 'bets', title: 'Marchés avec signal', items: [] };
+      } else if (l.startsWith('⚽ BUTEURS') || l.startsWith('⚽ BUT')) {
+        if (current) sections.push(current);
+        current = { type: 'section', title: clean(l), items: [] };
+      } else {
+        // Contenu d'une section
+        if (current) {
+          if (current.type === 'bets' || current.type === 'section' || current.type === 'compo') {
+            if (l.startsWith('→') || l.startsWith('-')) {
+              current.items = current.items || [];
+              current.items.push(clean(l.replace(/^[→\-]\s*/,'')));
+            } else if (l.startsWith('Marché :') || l.startsWith('Pourquoi') || l.startsWith('Cote :') || l.startsWith('Probabilité') || l.startsWith('Écart')) {
+              current.items = current.items || [];
+              current.items.push(clean(l));
+            } else if (l) {
+              current.items = current.items || [];
+              current.items.push(clean(l));
+            }
+          } else if (current.type === 'best') {
+            if (l.startsWith('Marché :') || l.startsWith('Cote :') || l.startsWith('Confiance') || l.startsWith('Pourquoi')) {
+              current.extras = current.extras || [];
+              current.extras.push(clean(l));
+            } else if (l) {
+              current.text = current.text ? current.text + ' ' + clean(l) : clean(l);
+            }
+          } else {
+            current.text = current.text ? current.text + '\n' + clean(l) : clean(l);
+          }
+        }
+      }
+    });
+    if (current) sections.push(current);
+
+    return sections.map((s, i) => {
+      if (s.type === 'verdict') {
+        const isValue = s.text.includes('VALUE') || s.text.includes('value');
+        const isPiege = s.text.includes('PIÈGE') || s.text.includes('piège');
+        const col = isValue ? C.green : isPiege ? '#dc2626' : '#111827';
+        const bg = isValue ? 'linear-gradient(135deg,#052e16,#166534)' : isPiege ? 'linear-gradient(135deg,#450a0a,#dc2626)' : 'linear-gradient(135deg,#111827,#374151)';
+        return (
+          <div key={i} style={{background:bg,borderRadius:16,padding:"16px 18px",marginBottom:10}} className="anim-scalein">
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",fontWeight:600,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Verdict</div>
+            <div style={{fontSize:17,fontWeight:900,color:"#fff",lineHeight:1.3}}>{s.text.replace(/^⚡\s*/,'')}</div>
+          </div>
+        );
+      }
+
+      if (s.type === 'confiance') {
+        const num = s.text.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
+        const score = num ? parseFloat(num[1]) : null;
+        const pct = score ? (score/10*100) : 0;
+        const col = pct >= 70 ? C.green : pct >= 50 ? '#ca8a04' : '#dc2626';
+        return (
+          <div key={i} style={{background:"#f9fafb",border:`1.5px solid ${C.border}`,borderRadius:13,padding:"12px 16px",marginBottom:10}} className="anim-fadeup">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <span style={{fontSize:12,fontWeight:700,color:C.gray,textTransform:"uppercase",letterSpacing:0.8}}>Confiance</span>
+              <span style={{fontSize:16,fontWeight:900,color:col}}>{score ? `${score}/10` : s.text.replace(/^🎯 CONFIANCE\s*:\s*/,'')}</span>
+            </div>
+            {score && <div style={{height:6,background:"#e5e7eb",borderRadius:99,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${pct}%`,background:col,borderRadius:99,transition:"width 0.8s ease"}}/>
+            </div>}
+          </div>
+        );
+      }
+
+      if (s.type === 'signal') {
+        const isValue = s.text.includes('💎') || s.text.includes('VALUE');
+        const isPiege = s.text.includes('🪤') || s.text.includes('PIÈGE');
+        const col = isValue ? C.green : isPiege ? '#dc2626' : '#ca8a04';
+        const bg = isValue ? C.lightGreen : isPiege ? '#fef2f2' : '#fffbeb';
+        const bord = isValue ? C.borderGreen : isPiege ? '#fca5a5' : '#fde68a';
+        const icon = isValue ? '💎' : isPiege ? '🪤' : '⚖️';
+        const label = isValue ? 'Value bet' : isPiege ? 'Piège détecté' : 'Cote juste';
+        return (
+          <div key={i} style={{background:bg,border:`2px solid ${bord}`,borderRadius:13,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"center",gap:10}} className="anim-fadeup">
+            <span style={{fontSize:24}}>{icon}</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:800,color:col}}>{label}</div>
+              <div style={{fontSize:12,color:col,opacity:0.8,marginTop:2}}>{s.text.replace(/^🔍 SIGNAL MARCHÉ\s*:\s*/,'').replace(/💎|🪤|⚖️/g,'').trim()}</div>
+            </div>
+          </div>
+        );
+      }
+
+      if (s.type === 'best') {
+        return (
+          <div key={i} style={{background:"linear-gradient(135deg,#052e16,#16a34a)",borderRadius:16,padding:"18px 20px",marginBottom:10,marginTop:6}} className="anim-scalein">
+            <div style={{fontSize:11,color:"#86efac",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🏆 Meilleur pari du match</div>
+            {s.text && <div style={{fontSize:15,color:"#fff",fontWeight:800,lineHeight:1.4,marginBottom:s.extras?.length?10:0}}>{s.text}</div>}
+            {s.extras && s.extras.map((e,j) => (
+              <div key={j} style={{fontSize:12,color:"#bbf7d0",marginTop:4,lineHeight:1.5}}>{e}</div>
+            ))}
+          </div>
+        );
+      }
+
+      if (s.type === 'bets' && s.items?.length) {
+        return (
+          <div key={i} style={{marginBottom:12}} className="anim-fadeup">
+            <div style={{fontSize:12,fontWeight:800,color:"#7c3aed",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8,padding:"6px 10px",background:"#f5f3ff",borderRadius:8,display:"inline-block"}}>{s.title}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {s.items.map((item,j) => {
+                const isValue = item.includes('VALUE') || item.toLowerCase().includes('value');
+                const conf = item.match(/confiance\s*:?\s*(\d+)\/10/i);
+                return (
+                  <div key={j} style={{background:isValue?C.lightGreen:"#f9fafb",border:`1.5px solid ${isValue?C.borderGreen:C.border}`,borderRadius:11,padding:"10px 14px",lineHeight:1.5}}>
+                    <div style={{fontSize:13,color:isValue?"#166534":"#374151",fontWeight:600}}>{item}</div>
+                    {conf && <div style={{marginTop:4,height:4,background:"#e5e7eb",borderRadius:99,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${parseFloat(conf[1])/10*100}%`,background:C.green,borderRadius:99}}/>
+                    </div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+
+      if (s.type === 'section' && s.items?.length) {
+        return (
+          <div key={i} style={{marginBottom:12}} className="anim-fadeup">
+            <div style={{fontSize:12,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8,borderLeft:`3px solid ${C.green}`,paddingLeft:10}}>{s.title?.replace(/^📊\s*/,'').replace(/^⚽\s*/,'')}</div>
+            <div style={{background:"#f9fafb",borderRadius:12,padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
+              {s.items.map((item,j) => (
+                <div key={j} style={{fontSize:13,color:"#374151",lineHeight:1.6,paddingBottom:j<s.items.length-1?6:0,borderBottom:j<s.items.length-1?`1px solid ${C.border}`:"none"}}>{item}</div>
               ))}
             </div>
-          </div>)}
-          {analysis&&!loading&&<div>{lines}</div>}
+          </div>
+        );
+      }
+
+      if (s.type === 'warning') {
+        return (
+          <div key={i} style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:12,padding:"12px 14px",marginBottom:10,display:"flex",gap:10,alignItems:"flex-start"}} className="anim-fadeup">
+            <span style={{fontSize:18,flexShrink:0}}>⚠️</span>
+            <div style={{fontSize:13,color:"#92400e",lineHeight:1.5}}>{s.text.replace(/^⚠️\s*/,'')}</div>
+          </div>
+        );
+      }
+
+      if (s.type === 'compo') {
+        return (
+          <div key={i} style={{background:"#f9fafb",border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:10}} className="anim-fadeup">
+            <div style={{fontSize:12,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>👥 Composition</div>
+            {s.items?.map((item,j) => (
+              <div key={j} style={{fontSize:13,color:"#4b5563",lineHeight:1.6}}>{item}</div>
+            ))}
+          </div>
+        );
+      }
+
+      return null;
+    });
+  };
+
+  const lines = renderAnalysis(analysis);
+
+  return (
+    <ProtectedContent>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:"#f8fafb",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
+        {/* Header */}
+        <div style={{background:"#fff",padding:"16px 20px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:10,color:C.gray,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:3}}>{match.sport==="football"?"⚽ Football — Analyse multi-marchés":"🎾 Tennis — Analyse IA 360°"}</div>
+            <div style={{fontSize:16,fontWeight:900,color:"#111827",letterSpacing:-0.3}}>{match.p1} <span style={{color:C.gray,fontWeight:400}}>vs</span> {match.p2}</div>
+            <div style={{fontSize:11,color:C.gray,marginTop:2}}>{match.tournament} · {match.date} · {match.bookmaker}</div>
+          </div>
+          <button onClick={onClose} style={{background:"#f3f4f6",border:"none",borderRadius:99,width:34,height:34,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        </div>
+
+        <div style={{padding:"16px 18px",overflowY:"auto",flex:1}}>
+          {!analysis && !loading && (
+            <div style={{textAlign:"center",padding:"32px 0"}}>
+              <div style={{fontSize:48,marginBottom:16}} className="anim-float">{match.sport==="football"?"⚽":"🎾"}</div>
+              <div style={{fontSize:18,fontWeight:900,color:"#111827",marginBottom:8}}>Prêt à analyser</div>
+              <div style={{fontSize:13,color:C.gray,marginBottom:24,lineHeight:1.7,maxWidth:280,margin:"0 auto 24px"}}>
+                {match.sport==="football"
+                  ? "Compositions · Cotes · Buteurs · Tirs · Mi-temps · Tous les marchés"
+                  : "Forme · Physique · Mental · Météo · Aces · Jeux · Handicap · Score exact"}
+              </div>
+              <button onClick={run} className="btn-hover" style={{background:`linear-gradient(135deg,${C.green},#22c55e)`,color:"#fff",border:"none",borderRadius:14,padding:"14px 36px",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 16px rgba(22,163,74,0.35)"}}>
+                Lancer l'analyse →
+              </button>
+            </div>
+          )}
+
+          {loading && (
+            <div style={{textAlign:"center",padding:"36px 0"}}>
+              <style>{`
+                @keyframes loupeSearch {
+                  0%   { transform: translate(0,0) rotate(0deg); }
+                  20%  { transform: translate(12px,-8px) rotate(15deg); }
+                  40%  { transform: translate(-8px,10px) rotate(-10deg); }
+                  60%  { transform: translate(10px,6px) rotate(20deg); }
+                  80%  { transform: translate(-6px,-10px) rotate(-5deg); }
+                  100% { transform: translate(0,0) rotate(0deg); }
+                }
+                @keyframes stepFade { 0%{opacity:0.3} 50%{opacity:1} 100%{opacity:0.3} }
+              `}</style>
+              <div style={{fontSize:52,marginBottom:20,display:"inline-block",animation:"loupeSearch 2.4s ease-in-out infinite"}}>🔍</div>
+              <div style={{fontSize:15,fontWeight:800,color:"#111827",marginBottom:16}}>Analyse en cours...</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:260,margin:"0 auto"}}>
+                {[
+                  {icon:"📊",text:"Déconstruction des cotes"},
+                  {icon:"🧬",text:"Analyse physique & mentale"},
+                  {icon:"🌦️",text:"Conditions & contexte"},
+                  {icon:"💎",text:"Détection value & pièges"},
+                  {icon:"🏆",text:"Décisions finales multi-marchés"},
+                ].map((s,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"#f9fafb",borderRadius:10,padding:"8px 14px",animation:`stepFade 2s ease-in-out ${i*0.4}s infinite`}}>
+                    <span style={{fontSize:16}}>{s.icon}</span>
+                    <span style={{fontSize:13,color:"#374151",fontWeight:500}}>{s.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {analysis && !loading && (
+            <div>
+              {lines}
+              <button onClick={()=>{setAnalysis(null);}} className="btn-hover" style={{width:"100%",marginTop:12,background:"#f3f4f6",border:"none",borderRadius:11,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",color:"#374151"}}>
+                ↩ Relancer l'analyse
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1678,7 +1952,7 @@ function AddBetModal({ match, user, onSave, onClose }) {
   };
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"85vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"85vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
         <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div><div style={{fontSize:11,color:C.gray,fontWeight:600,textTransform:"uppercase",letterSpacing:0.8}}>Enregistrer mon pari</div><div style={{fontSize:16,fontWeight:900,color:"#111827"}}>{match.p1} vs {match.p2}</div><div style={{fontSize:12,color:C.gray,marginTop:2}}>{match.tournament} · {match.date}</div></div>
           <button onClick={onClose} style={{background:"#f3f4f6",border:"none",borderRadius:99,width:32,height:32,fontSize:17,cursor:"pointer"}}>✕</button>
@@ -2101,7 +2375,7 @@ function LineupPanel({ match, onClose }) {
   return (
     <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
         <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontSize:11,color:C.gray,fontWeight:600,textTransform:"uppercase",letterSpacing:0.8}}>👥 Compositions & Fiches joueurs</div>
@@ -2171,7 +2445,7 @@ function HalftimePanel({ match, onClose }) {
   return (
     <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"88vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"88vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
         <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontSize:11,color:C.gray,fontWeight:600,textTransform:"uppercase",letterSpacing:0.8}}>⏱️ Analyse mi-temps live</div>
@@ -2250,7 +2524,7 @@ function SmartComboPanel({ allMatches, onClose, onAddToBets }) {
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"88vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"88vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
 
         <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
@@ -2337,7 +2611,7 @@ function DebriefPanel({ bet, onClose }) {
   return (
     <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"85vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"85vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
         <div style={{padding:"18px 22px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontSize:11,color:C.gray,fontWeight:600,textTransform:"uppercase",letterSpacing:0.8}}>🧠 Debrief BetTrust</div>
@@ -2373,6 +2647,185 @@ function DebriefPanel({ bet, onClose }) {
 
 
 // ─── COACH PERSONNEL — PANEL ───────────────────────────────────────
+
+// ─── SCANNER DE COTE ───────────────────────────────────────────────
+const SCANNER_PROMPT = `Tu es l'analyste value bet de BetTrust. Un parieur te soumet une cote qu'il a trouvée sur un site de paris. Ton rôle : analyser en 30 secondes si cette cote représente une vraie valeur ou un piège.
+
+MÉTHODE :
+1. Convertis la cote en probabilité implicite du marché (1/cote × 100)
+2. Recherche les informations sur ce match/événement
+3. Estime ta propre probabilité réelle basée sur les données disponibles
+4. Calcule l'écart entre les deux
+5. Donne un verdict immédiat et sans ambiguïté
+
+SEUILS :
+- Probabilité réelle estimée > probabilité marché + 8% : 💎 VALUE BET — prends-le
+- Probabilité réelle estimée < probabilité marché - 8% : 🪤 PIÈGE — fuis
+- Écart < 8% dans les deux sens : ⚖️ COTE JUSTE — neutre
+
+FORMAT STRICT :
+---
+📊 DÉCODAGE :
+Cote : [X.XX] → Probabilité marché : [XX]%
+Probabilité réelle estimée : [XX]%
+Écart : [+/-XX]%
+
+🎯 VERDICT : [💎 VALUE BET / 🪤 PIÈGE / ⚖️ COTE JUSTE]
+Confiance : X/10
+
+💡 POURQUOI EN 3 LIGNES :
+[Explication directe basée sur les données réelles]
+
+💰 DÉCISION : [Jouer / Ne pas jouer / Attendre plus d'infos]
+---`;
+
+async function scanCote(cote, description, sport) {
+  const probMarche = ((1 / parseFloat(cote)) * 100).toFixed(1);
+  const res = await fetch(`${BACKEND_URL}/api/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages: [{ role: "user", content: `Analyse cette cote rapidement : ${cote} sur "${description}" (${sport}). Probabilité implicite du marché : ${probMarche}%. Cherche les infos sur cet événement et dis-moi si c'est une value bet, un piège ou une cote juste. Verdict rapide et tranché.` }],
+      system: SCANNER_PROMPT,
+      max_tokens: 600,
+      useWebSearch: true,
+    })
+  });
+  const data = await res.json();
+  return data.text || "Analyse indisponible.";
+}
+
+function ScannerPanel({ onClose }) {
+  const [cote, setCote] = useState("");
+  const [description, setDescription] = useState("");
+  const [sport, setSport] = useState("football");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const probMarche = cote ? ((1 / parseFloat(cote)) * 100).toFixed(1) : null;
+
+  const scan = async () => {
+    if (!cote || !description) { setError("Remplis la cote et le pari."); return; }
+    if (isNaN(parseFloat(cote)) || parseFloat(cote) < 1.01) { setError("Cote invalide (minimum 1.01)"); return; }
+    setError(""); setLoading(true); setResult(null);
+    try { setResult(await scanCote(cote, description, sport)); }
+    catch(e) { setResult("Erreur réseau. Réessaie."); }
+    setLoading(false);
+  };
+
+  const formatResult = (text) => text.split("\n").map((l, i) => {
+    if (l.startsWith("📊")) return <div key={i} style={{fontSize:13,fontWeight:800,color:"#374151",marginTop:10,marginBottom:4}}>{l}</div>;
+    if (l.startsWith("🎯 VERDICT")) {
+      const isValue = l.includes("VALUE");
+      const isPiege = l.includes("PIÈGE");
+      const col = isValue ? C.green : isPiege ? "#dc2626" : "#ca8a04";
+      const bg = isValue ? C.lightGreen : isPiege ? "#fef2f2" : "#fffbeb";
+      const bord = isValue ? C.borderGreen : isPiege ? "#fca5a5" : "#fde68a";
+      return <div key={i} style={{fontSize:16,fontWeight:900,color:col,background:bg,border:`2px solid ${bord}`,borderRadius:13,padding:"12px 16px",marginTop:12,marginBottom:8}}>{l}</div>;
+    }
+    if (l.startsWith("Confiance")) return <div key={i} style={{fontSize:13,fontWeight:700,color:C.green,marginBottom:8}}>{l}</div>;
+    if (l.startsWith("💡")) return <div key={i} style={{fontSize:13,fontWeight:800,color:"#374151",marginTop:10,marginBottom:4}}>{l}</div>;
+    if (l.startsWith("💰 DÉCISION")) {
+      const jouer = l.includes("Jouer") && !l.includes("Ne pas");
+      return <div key={i} style={{fontSize:14,fontWeight:800,color:jouer?C.green:"#dc2626",background:jouer?C.lightGreen:"#fef2f2",borderRadius:10,padding:"10px 14px",marginTop:10}}>{l}</div>;
+    }
+    if (l.startsWith("Cote :") || l.startsWith("Probabilité") || l.startsWith("Écart")) return <div key={i} style={{fontSize:13,color:"#374151",lineHeight:1.6,fontFamily:"monospace"}}>{l}</div>;
+    if (l.startsWith("---")) return <hr key={i} style={{border:"none",borderTop:`1px solid ${C.border}`,margin:"8px 0"}}/>;
+    if (!l.trim()) return <div key={i} style={{height:4}}/>;
+    return <div key={i} style={{fontSize:13,color:"#4b5563",lineHeight:1.6}}>{l}</div>;
+  });
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
+        {/* Header */}
+        <div style={{background:"linear-gradient(135deg,#111827,#374151)",padding:"18px 22px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:11,color:"#9ca3af",fontWeight:600,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>🔎 Scanner de cote</div>
+            <div style={{fontSize:17,fontWeight:900,color:"#fff"}}>Value ou Piège ?</div>
+            <div style={{fontSize:12,color:"#6b7280",marginTop:2}}>Entre n'importe quelle cote — verdict en 10 secondes</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:99,width:32,height:32,fontSize:17,cursor:"pointer",color:"#fff"}}>✕</button>
+        </div>
+
+        <div style={{padding:"18px 22px",overflowY:"auto",flex:1}}>
+          {/* Sport selector */}
+          <div style={{display:"flex",gap:8,marginBottom:14}}>
+            {[{k:"football",l:"⚽ Football"},{k:"tennis",l:"🎾 Tennis"},{k:"autre",l:"🏅 Autre"}].map(s=>(
+              <button key={s.k} onClick={()=>setSport(s.k)} style={{flex:1,padding:"8px 4px",borderRadius:9,border:`1.5px solid ${sport===s.k?C.green:C.border}`,background:sport===s.k?C.lightGreen:"#fff",color:sport===s.k?C.green:"#374151",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+                {s.l}
+              </button>
+            ))}
+          </div>
+
+          {/* Cote input */}
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.gray,marginBottom:6,textTransform:"uppercase",letterSpacing:0.6}}>La cote que tu as trouvée</div>
+            <div style={{display:"flex",gap:10,alignItems:"center"}}>
+              <input
+                value={cote}
+                onChange={e=>setCote(e.target.value)}
+                placeholder="ex: 2.40"
+                type="number"
+                step="0.01"
+                min="1.01"
+                style={{flex:1,border:`2px solid ${cote?C.green:C.border}`,borderRadius:12,padding:"14px 16px",fontSize:22,fontWeight:900,outline:"none",fontFamily:"inherit",color:"#111827",textAlign:"center"}}
+              />
+              {probMarche && (
+                <div style={{textAlign:"center",minWidth:80}}>
+                  <div style={{fontSize:11,color:C.gray,marginBottom:2}}>Prob. marché</div>
+                  <div style={{fontSize:20,fontWeight:900,color:"#111827"}}>{probMarche}%</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Description input */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:12,fontWeight:700,color:C.gray,marginBottom:6,textTransform:"uppercase",letterSpacing:0.6}}>Décris le pari</div>
+            <input
+              value={description}
+              onChange={e=>setDescription(e.target.value)}
+              placeholder="ex: PSG gagne contre Lyon / Alcaraz vainqueur"
+              style={{width:"100%",border:`1.5px solid ${C.border}`,borderRadius:11,padding:"12px 14px",fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",color:"#111827"}}
+            />
+          </div>
+
+          {error && <div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:9,padding:"8px 12px",fontSize:13,color:"#dc2626",marginBottom:12,fontWeight:500}}>{error}</div>}
+
+          {/* Scan button */}
+          {!loading && !result && (
+            <button onClick={scan} disabled={!cote||!description} style={{width:"100%",background:(!cote||!description)?"#e5e7eb":`linear-gradient(135deg,#111827,#374151)`,color:(!cote||!description)?"#9ca3af":"#fff",border:"none",borderRadius:13,padding:"14px 0",fontSize:15,fontWeight:800,cursor:(!cote||!description)?"default":"pointer",fontFamily:"inherit"}}>
+              🔎 Scanner cette cote →
+            </button>
+          )}
+
+          {/* Loading */}
+          {loading && (
+            <div style={{textAlign:"center",padding:"28px 0"}}>
+              <style>{`@keyframes scanPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }`}</style>
+              <div style={{fontSize:44,marginBottom:12,display:"inline-block",animation:"scanPulse 0.8s ease-in-out infinite"}}>🔎</div>
+              <div style={{fontSize:15,fontWeight:800,color:"#111827",marginBottom:6}}>Analyse en cours...</div>
+              <div style={{fontSize:13,color:C.gray}}>Calcul probabilité marché → Recherche données → Verdict</div>
+            </div>
+          )}
+
+          {/* Result */}
+          {result && !loading && (
+            <div>
+              <div>{formatResult(result)}</div>
+              <button onClick={()=>{setResult(null);setCote("");setDescription("");}} style={{width:"100%",marginTop:16,background:"#f3f4f6",border:"none",borderRadius:10,padding:"10px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",color:"#374151"}}>
+                ← Scanner une autre cote
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CoachPanel({ user, bets, onClose }) {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -2404,7 +2857,7 @@ function CoachPanel({ user, bets, onClose }) {
   return (
     <ProtectedContent>
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"hidden",display:"flex",flexDirection:"column"}} className="panel-slidein">
         <div style={{background:"linear-gradient(135deg,#0f2d1a,#16a34a)",padding:"20px 22px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <div style={{fontSize:11,color:"#86efac",fontWeight:600,textTransform:"uppercase",letterSpacing:0.8,marginBottom:4}}>🏆 Ton coach personnel</div>
@@ -2587,6 +3040,7 @@ export default function BetTrust() {
   const [lineupTarget, setLineupTarget] = useState(null);
   const [halftimeTarget, setHalftimeTarget] = useState(null);
   const [showCoach, setShowCoach] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const [bets, setBets] = useState([]);
   const [sub, setSub] = useState(null);
   const [subLoaded, setSubLoaded] = useState(false);
@@ -2688,12 +3142,13 @@ export default function BetTrust() {
 
   return (
     <div style={{minHeight:"100vh",background: tab==="matches" ? theme.bgDark : C.bg, fontFamily:"'Inter',system-ui,sans-serif", position:"relative", transition:"background 0.4s ease"}}>
+      <GlobalAnimations />
       {tab==="matches" && (sport==="football" ? <FootballFieldBackground key="bg-football" /> : <ClayCourtBackground key="bg-tennis" />)}
       <div style={{position:"relative", zIndex:1}}>
       {/* HEADER */}
       <div style={{background: tab==="matches" ? "rgba(255,255,255,0.92)" : "#fff", backdropFilter: tab==="matches" ? "blur(8px)" : "none", borderBottom:`1.5px solid ${C.border}`,padding:"0 18px",position:"sticky",top:0,zIndex:100}}>
         <div style={{maxWidth:860,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:56}}>
-          <div style={{display:"flex",alignItems:"center",gap:9}}>
+          <div style={{display:"flex",alignItems:"center",gap:9}} className="anim-fadeup">
             <BetTrustLockup size={30} light={false} />
             <span style={{fontSize:10,fontWeight:700,background:C.lightGreen,color:C.green,padding:"2px 8px",borderRadius:99,border:`1px solid ${C.borderGreen}`}}>IA 360°</span>
             <SubStatusBadge sub={sub} />
@@ -2708,7 +3163,7 @@ export default function BetTrust() {
       {/* TABS NAV */}
       <div style={{background:"#fff",borderBottom:`1px solid ${C.border}`,padding:"0 18px"}}>
         <div style={{maxWidth:860,margin:"0 auto",display:"flex",gap:0}}>
-          {[{k:"matches",l:"🔍 Matchs"},{k:"history",l:`📋 Paris${bets.length>0?` (${bets.length})`:""}`},{k:"coach",l:"🏆 Coach"}].map(t=>(
+          {[{k:"matches",l:"🔍 Matchs"},{k:"history",l:`📋 Paris${bets.length>0?` (${bets.length})`:""}`},{k:"coach",l:"🏆 Coach"},{k:"scanner",l:"🎯 Scanner"}].map(t=>(
             <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:"12px 18px",background:"none",border:"none",borderBottom:tab===t.k?`2.5px solid ${C.green}`:"2.5px solid transparent",fontWeight:700,fontSize:13,color:tab===t.k?C.green:C.gray,cursor:"pointer",fontFamily:"inherit"}}>
               {t.l}
             </button>
@@ -2905,6 +3360,33 @@ export default function BetTrust() {
               </div>
             )}
           </div>
+        ) : tab==="scanner" ? (
+          <div style={{paddingBottom:40}}>
+            <div style={{background:"linear-gradient(135deg,#111827,#374151)",borderRadius:18,padding:"28px 22px",marginBottom:20,textAlign:"center"}}>
+              <div style={{fontSize:40,marginBottom:10}}>🔎</div>
+              <div style={{fontSize:20,fontWeight:900,color:"#fff",marginBottom:8}}>Scanner de cote</div>
+              <div style={{fontSize:13,color:"#9ca3af",marginBottom:20,lineHeight:1.6}}>
+                Tu vois une cote intéressante sur Winamax, Betclic ou Unibet ? Entre-la ici — l'IA analyse en 10 secondes si c'est une value bet ou un piège.
+              </div>
+              <button onClick={()=>setShowScanner(true)} style={{background:"#fff",color:"#111827",border:"none",borderRadius:13,padding:"13px 32px",fontWeight:800,fontSize:15,cursor:"pointer",fontFamily:"inherit"}}>
+                Scanner une cote →
+              </button>
+            </div>
+            <div style={{background:"#fff",border:`1.5px solid ${C.border}`,borderRadius:16,padding:"18px 20px"}}>
+              <div style={{fontSize:13,fontWeight:800,color:"#111827",marginBottom:12}}>Comment ça marche</div>
+              {[
+                {icon:"1️⃣",text:"Tu vois une cote sur ton appli de paris (ex: 2.40 sur PSG)"},
+                {icon:"2️⃣",text:"Tu entres la cote et le contexte dans le scanner"},
+                {icon:"3️⃣",text:"L'IA calcule si le marché se trompe — value ou piège"},
+                {icon:"4️⃣",text:"Tu as un verdict tranché en moins de 10 secondes"},
+              ].map((s,i)=>(
+                <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:i<3?12:0}}>
+                  <span style={{fontSize:18,flexShrink:0}}>{s.icon}</span>
+                  <span style={{fontSize:13,color:"#374151",lineHeight:1.5}}>{s.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : null}
       </div>
 
@@ -2915,6 +3397,7 @@ export default function BetTrust() {
       {lineupTarget&&<LineupPanel match={lineupTarget} onClose={()=>setLineupTarget(null)} />}
       {halftimeTarget&&<HalftimePanel match={halftimeTarget} onClose={()=>setHalftimeTarget(null)} />}
       {showCoach&&<CoachPanel user={user} bets={bets} onClose={()=>setShowCoach(false)} />}
+      {showScanner&&<ScannerPanel onClose={()=>setShowScanner(false)} />}
       {showSmartCombo&&(
         <SmartComboPanel
           allMatches={allMatches}
