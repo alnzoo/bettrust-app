@@ -3,8 +3,7 @@ import { useState, useEffect } from "react";
 // ─── CONFIG ───────────────────────────────────────────────────────
 // The Odds API — clé gratuite sur https://the-odds-api.com
 // 500 requêtes/mois en gratuit, largement suffisant pour commencer
-const ODDS_API_KEY = "REMPLACE_PAR_TA_CLE_API"; // <- mets ta clé ici
-const ODDS_BASE = "https://api.the-odds-api.com/v4";
+// Matchs chargés via le backend Render (clé API sécurisée côté serveur)
 
 // Sports couverts — Tennis + Football toutes compétitions majeures
 const SPORT_KEYS = {
@@ -2547,11 +2546,7 @@ export default function BetTrust() {
   useEffect(() => {
     if (!user) return;
     setLoadingMatches(true); setApiError(false); setMatches([]);
-    if (ODDS_API_KEY === "REMPLACE_PAR_TA_CLE_API") {
-      // Mode démo sans clé API
-      setTimeout(() => { setMatches(DEMO_MATCHES[sport]); setLoadingMatches(false); }, 600);
-      return;
-    }
+    // Matchs via backend
     fetchAllMatches(sport)
       .then(raw => {
         const parsed = raw.map(r=>parseOddsMatch(r,sport)).filter(Boolean);
@@ -2566,10 +2561,7 @@ export default function BetTrust() {
   // (indépendamment du filtre sport actif sur l'écran principal).
   useEffect(() => {
     if (!user) return;
-    if (ODDS_API_KEY === "REMPLACE_PAR_TA_CLE_API") {
-      setAllMatches([...DEMO_MATCHES.tennis, ...DEMO_MATCHES.football]);
-      return;
-    }
+    // allMatches via backend
     Promise.all([fetchAllMatches("tennis"), fetchAllMatches("football")])
       .then(([t, f]) => {
         const parsedT = t.map(r=>parseOddsMatch(r,"tennis")).filter(Boolean);
@@ -2659,16 +2651,9 @@ export default function BetTrust() {
             </button>
 
             {/* API KEY BANNER */}
-            {ODDS_API_KEY === "REMPLACE_PAR_TA_CLE_API" && (
-              <div style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:12,padding:"12px 16px",marginBottom:16,fontSize:13,color:"#92400e"}}>
-                <strong>🔑 Mode démo</strong> — Pour avoir les vrais matchs en temps réel, obtiens ta clé gratuite sur{" "}
-                <a href="https://the-odds-api.com" target="_blank" rel="noreferrer" style={{color:"#d97706",fontWeight:700}}>the-odds-api.com</a>{" "}
-                et remplace <code>REMPLACE_PAR_TA_CLE_API</code> dans le code.
-              </div>
-            )}
-            {apiError && ODDS_API_KEY !== "REMPLACE_PAR_TA_CLE_API" && (
+            {apiError && (
               <div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:12,padding:"12px 16px",marginBottom:16,fontSize:13,color:"#dc2626"}}>
-                ⚠️ Impossible de charger les vrais matchs (clé API invalide ou aucun match en cours). Affichage en mode démo.
+                ⚠️ Aucun match disponible pour le moment. Le serveur est peut-être en train de démarrer (30 secondes) — réessaie dans un instant.
               </div>
             )}
 
