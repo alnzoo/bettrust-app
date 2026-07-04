@@ -43,7 +43,7 @@ const STRIPE_PUBLIC_KEY = "pk_live_51Tnr6CAxeR2E4XmUAShz2QN3oHE8LImM742iMHE3Xd9g
 // Elle doit vivre uniquement sur un serveur backend, qui créera la session
 // de paiement et l'abonnement récurrent via l'API Stripe (Checkout + Billing).
 // Une fois ton backend déployé, mets son URL ci-dessous :
-const BACKEND_URL = "https://bettrust-backend.onrender.com";
+const BACKEND_URL = "https://bettrust-backend.onrender.com"; // Backend Render
 
 const STRIPE_CHECKOUT_ENDPOINT = "https://bettrust-backend.onrender.com/api/create-checkout-session";
 
