@@ -205,12 +205,31 @@ async function updateBet(email, betId, updates, token) {
 }
 async function saveSubscription(email, sub, token) {
   try {
-    await sb.upsert("subscriptions", { user_email: email, ...sub }, token);
-  } catch(e) {}
+    const tok = token || SUPABASE_ANON_KEY;
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/subscriptions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${tok}`,
+        "Prefer": "resolution=merge-duplicates",
+      },
+      body: JSON.stringify({ user_email: email, ...sub, updated_at: new Date().toISOString() }),
+    });
+    return r.ok;
+  } catch(e) { return false; }
 }
 async function getSubscription(email, token) {
   try {
-    const rows = await sb.select("subscriptions", `user_email=eq.${encodeURIComponent(email)}&limit=1`, token);
+    const tok = token || SUPABASE_ANON_KEY;
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/subscriptions?user_email=eq.${encodeURIComponent(email)}&limit=1`, {
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${tok}`,
+      },
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
     return rows && rows.length > 0 ? rows[0] : null;
   } catch(e) { return null; }
 }
@@ -2141,13 +2160,19 @@ function AddBetModal({ match, user, onSave, onClose }) {
 function getSubStatus(sub) {
   if (!sub) return { status: "none" };
   const now = new Date();
-  const trialEnd = new Date(sub.trialEndsAt);
-  if (sub.status === "active") return { status: "active" };
-  if (now < trialEnd) {
-    const daysLeft = Math.ceil((trialEnd - now) / (1000*60*60*24));
-    return { status: "trial", daysLeft };
+  // Supabase retourne snake_case, le code local utilise camelCase — on supporte les deux
+  const trialEndsAt = sub.trialEndsAt || sub.trial_ends_at;
+  const status = sub.status;
+  if (status === "active") return { status: "active" };
+  if (trialEndsAt) {
+    const trialEnd = new Date(trialEndsAt);
+    if (now < trialEnd) {
+      const daysLeft = Math.ceil((trialEnd - now) / (1000*60*60*24));
+      return { status: "trial", daysLeft };
+    }
+    return { status: "expired" };
   }
-  return { status: "expired" };
+  return { status: "none" };
 }
 
 // ─── NOTIFICATION DE RAPPEL (48h d'inactivité) ────────────────────
@@ -2227,8 +2252,15 @@ function SubscriptionScreen({ user, sub, onActivateTrial, onSubscribed }) {
   const startTrial = async () => {
     const now = new Date();
     const trialEnd = new Date(now.getTime() + TRIAL_DAYS*24*60*60*1000);
-    const newSub = { status:"trial", trialStartedAt: now.toISOString(), trialEndsAt: trialEnd.toISOString() };
-    await saveSubscription(user.email, newSub);
+    const newSub = {
+      status: "trial",
+      trial_started_at: now.toISOString(),
+      trial_ends_at: trialEnd.toISOString(),
+      // camelCase aussi pour la compatibilité locale
+      trialStartedAt: now.toISOString(),
+      trialEndsAt: trialEnd.toISOString(),
+    };
+    await saveSubscription(user.email, newSub, user.token);
     onActivateTrial(newSub);
   };
 
@@ -3398,11 +3430,11 @@ export default function BetTrust() {
 
   useEffect(() => {
     if (!user) return;
-    getBets(user.email).then(setBets);
-    getSubscription(user.email).then(s => { setSub(s); setSubLoaded(true); });
-    getLastSeen(user.email).then(setLastSeen);
-    getConsent(user.email).then(c => { setConsent(c); setConsentLoaded(true); });
-    saveLastSeen(user.email);
+    getBets(user.email, user.token).then(setBets);
+    getSubscription(user.email, user.token).then(s => { setSub(s); setSubLoaded(true); });
+    getLastSeen(user.email, user.token).then(setLastSeen);
+    getConsent(user.email, user.token).then(c => { setConsent(c); setConsentLoaded(true); });
+    saveLastSeen(user.email, user.token);
   }, [user]);
 
   // Déclenche la demande d'avis dès qu'un pari "won" existe et que l'utilisateur
