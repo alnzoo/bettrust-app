@@ -6,10 +6,22 @@ import { useState, useEffect } from "react";
 const ODDS_API_KEY = "REMPLACE_PAR_TA_CLE_API"; // <- mets ta clé ici
 const ODDS_BASE = "https://api.the-odds-api.com/v4";
 
-// Sports qu'on suit
+// Sports couverts — Tennis + Football toutes compétitions majeures
 const SPORT_KEYS = {
-  tennis: ["tennis_atp_wimbledon","tennis_wta_wimbledon","tennis_atp_french_open","tennis_atp_us_open"],
-  football: ["soccer_france_ligue_one","soccer_spain_la_liga","soccer_epl","soccer_germany_bundesliga","soccer_uefa_champs_league"]
+  tennis: [
+    "tennis_atp_wimbledon","tennis_wta_wimbledon",
+    "tennis_atp_french_open","tennis_wta_french_open",
+    "tennis_atp_us_open","tennis_wta_us_open",
+    "tennis_atp_australian_open","tennis_wta_australian_open",
+  ],
+  football: [
+    "soccer_france_ligue_one","soccer_france_ligue_two",
+    "soccer_spain_la_liga","soccer_epl",
+    "soccer_germany_bundesliga","soccer_italy_serie_a",
+    "soccer_portugal_primeira_liga","soccer_netherlands_eredivisie",
+    "soccer_belgium_first_div","soccer_uefa_champs_league",
+    "soccer_uefa_europa_league",
+  ]
 };
 
 const BOOKMAKERS = ["winamax","betclic","unibet","pinnacle","bet365"];
@@ -249,23 +261,26 @@ async function saveAppRating(email, rating, comment, token) {
 
 
 // ─── ODDS API ─────────────────────────────────────────────────────
-async function fetchOddsForSport(sportKey) {
-  const url = `${ODDS_BASE}/sports/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=eu&markets=h2h&oddsFormat=decimal&bookmakers=${BOOKMAKERS.join(",")}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`API error ${res.status}`);
-  return await res.json();
+async function fetchAllMatches(sport) {
+  try {
+    // Passe par le backend Render qui a la vraie clé API
+    const res = await fetch(`${BACKEND_URL}/api/odds/${sport}`);
+    if (!res.ok) throw new Error("Backend error");
+    const data = await res.json();
+    return data.matches || [];
+  } catch(e) {
+    // Fallback démo si le backend est indisponible
+    console.warn("Backend indisponible, mode démo");
+    return [];
+  }
 }
 
-async function fetchAllMatches(sport) {
-  const keys = SPORT_KEYS[sport];
-  const results = [];
-  for (const key of keys) {
-    try {
-      const data = await fetchOddsForSport(key);
-      results.push(...data);
-    } catch(e) { /* sport pas dispo, on skip */ }
-  }
-  return results;
+async function fetchOddsForSport(sportKey) {
+  // Gardé pour compatibilité mais non utilisé directement
+  const res = await fetch(`${BACKEND_URL}/api/odds/${sportKey.includes("tennis") ? "tennis" : "football"}`);
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const data = await res.json();
+  return data.matches || [];
 }
 
 function parseOddsMatch(raw, sport) {
@@ -2468,7 +2483,8 @@ export default function BetTrust() {
 
   if (subLoaded) {
     const status = getSubStatus(sub);
-    if (status.status === "none" || status.status === "expired") {
+    const isAdmin = user.email === "solo75lifee@gmail.com";
+    if (!isAdmin && (status.status === "none" || status.status === "expired")) {
       return (
         <SubscriptionScreen
           user={user}
