@@ -14,12 +14,18 @@ const SPORT_KEYS = {
     "tennis_atp_australian_open","tennis_wta_australian_open",
   ],
   football: [
-    "soccer_france_ligue_one","soccer_france_ligue_two",
-    "soccer_spain_la_liga","soccer_epl",
-    "soccer_germany_bundesliga","soccer_italy_serie_a",
-    "soccer_portugal_primeira_liga","soccer_netherlands_eredivisie",
-    "soccer_belgium_first_div","soccer_uefa_champs_league",
-    "soccer_uefa_europa_league",
+    "soccer_fifa_world_cup",           // 🌍 Coupe du Monde FIFA
+    "soccer_uefa_champs_league",       // Champions League
+    "soccer_uefa_europa_league",       // Europa League
+    "soccer_france_ligue_one",         // Ligue 1
+    "soccer_spain_la_liga",            // La Liga
+    "soccer_epl",                      // Premier League
+    "soccer_germany_bundesliga",       // Bundesliga
+    "soccer_italy_serie_a",            // Serie A
+    "soccer_portugal_primeira_liga",   // Liga Portugal
+    "soccer_netherlands_eredivisie",   // Eredivisie
+    "soccer_belgium_first_div",        // Pro League Belgique
+    "soccer_france_ligue_two",         // Ligue 2
   ]
 };
 
@@ -1664,7 +1670,8 @@ function AnalysisPanel({ match, onClose }) {
   // Rendu propre et visuel de l'analyse
   const renderAnalysis = (text) => {
     if (!text) return null;
-    // Nettoie les markdown parasites (**, ##, ###, *, _)
+
+    // Nettoie les markdown parasites
     const clean = (s) => s
       .replace(/\*\*([^*]+)\*\*/g, '$1')
       .replace(/\*([^*]+)\*/g, '$1')
@@ -1672,14 +1679,52 @@ function AnalysisPanel({ match, onClose }) {
       .replace(/^[-•]\s+/gm, '')
       .trim();
 
+    // Si le texte est trop court ou vide, affiche brut
+    if (text.trim().length < 20) {
+      return <div style={{fontSize:14,color:"#374151",lineHeight:1.7,padding:"8px 0"}}>{text}</div>;
+    }
+
     const sections = [];
     let current = null;
+    let hasStructure = false;
 
     text.split('\n').forEach(raw => {
       const l = raw.trim();
       if (!l || l === '---') return;
 
-      // Sections titre
+      if (l.startsWith('⚡') || l.startsWith('🎯 CONFIANCE') || l.startsWith('🔍 SIGNAL') ||
+          l.startsWith('📊') || l.startsWith('🎯 TOUS') || l.startsWith('🏆') ||
+          l.startsWith('💰 LE') || l.startsWith('⚠️') || l.startsWith('👥') || l.startsWith('📋')) {
+        hasStructure = true;
+      }
+    });
+
+    // Si pas de structure reconnue → rendu ligne par ligne simple mais propre
+    if (!hasStructure) {
+      return (
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {text.split('\n').map((raw, i) => {
+            const l = clean(raw);
+            if (!l) return <div key={i} style={{height:6}}/>;
+            const isTitle = l.match(/^[A-Z\u00C0-\u024F]{3,}/) || l.endsWith(':');
+            return (
+              <div key={i} style={{
+                fontSize: isTitle ? 13 : 13,
+                fontWeight: isTitle ? 700 : 400,
+                color: isTitle ? "#111827" : "#4b5563",
+                lineHeight: 1.65,
+                paddingTop: isTitle ? 6 : 0,
+              }}>{l}</div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    text.split('\n').forEach(raw => {
+      const l = raw.trim();
+      if (!l || l === '---') return;
+
       if (l.startsWith('⚡')) {
         if (current) sections.push(current);
         current = { type: 'verdict', text: clean(l) };
@@ -1689,13 +1734,13 @@ function AnalysisPanel({ match, onClose }) {
       } else if (l.startsWith('🔍 SIGNAL')) {
         if (current) sections.push(current);
         current = { type: 'signal', text: clean(l) };
-      } else if (l.startsWith('📊 ANALYSE') || l.startsWith('📊 DÉCODAGE')) {
+      } else if (l.startsWith('📊') || l.startsWith('📋 MARCHÉS') || l.startsWith('📋 TOUS')) {
         if (current) sections.push(current);
         current = { type: 'section', title: clean(l), items: [] };
       } else if (l.startsWith('🎯 TOUS LES PARIS')) {
         if (current) sections.push(current);
         current = { type: 'bets', title: 'Tous les paris recommandés', items: [] };
-      } else if (l.startsWith('🏆 LE MEILLEUR') || l.startsWith('💰 LE MEILLEUR')) {
+      } else if (l.startsWith('🏆') || l.startsWith('💰 LE MEILLEUR')) {
         if (current) sections.push(current);
         current = { type: 'best', text: clean(l.replace(/🏆 LE MEILLEUR PARI DU MATCH\s*:?/,'').replace(/💰 LE MEILLEUR PARI DU MATCH\s*:?/,'').trim()), extras: [] };
       } else if (l.startsWith('⚠️')) {
@@ -1704,36 +1749,29 @@ function AnalysisPanel({ match, onClose }) {
       } else if (l.startsWith('👥')) {
         if (current) sections.push(current);
         current = { type: 'compo', text: clean(l), items: [] };
-      } else if (l.startsWith('📋 MARCHÉS') || l.startsWith('📋 TOUS')) {
-        if (current) sections.push(current);
-        current = { type: 'bets', title: 'Marchés avec signal', items: [] };
-      } else if (l.startsWith('⚽ BUTEURS') || l.startsWith('⚽ BUT')) {
+      } else if (l.startsWith('⚽ BUT') || l.startsWith('⚽ BUTEURS')) {
         if (current) sections.push(current);
         current = { type: 'section', title: clean(l), items: [] };
       } else {
-        // Contenu d'une section
         if (current) {
           if (current.type === 'bets' || current.type === 'section' || current.type === 'compo') {
-            if (l.startsWith('→') || l.startsWith('-')) {
+            if (l) {
               current.items = current.items || [];
               current.items.push(clean(l.replace(/^[→\-]\s*/,'')));
-            } else if (l.startsWith('Marché :') || l.startsWith('Pourquoi') || l.startsWith('Cote :') || l.startsWith('Probabilité') || l.startsWith('Écart')) {
-              current.items = current.items || [];
-              current.items.push(clean(l));
-            } else if (l) {
-              current.items = current.items || [];
-              current.items.push(clean(l));
             }
           } else if (current.type === 'best') {
-            if (l.startsWith('Marché :') || l.startsWith('Cote :') || l.startsWith('Confiance') || l.startsWith('Pourquoi')) {
+            if (l.startsWith('Marché') || l.startsWith('Cote') || l.startsWith('Confiance') || l.startsWith('Pourquoi')) {
               current.extras = current.extras || [];
               current.extras.push(clean(l));
             } else if (l) {
               current.text = current.text ? current.text + ' ' + clean(l) : clean(l);
             }
           } else {
-            current.text = current.text ? current.text + '\n' + clean(l) : clean(l);
+            if (l) current.text = current.text ? current.text + '\n' + clean(l) : clean(l);
           }
+        } else if (l) {
+          // Texte orphelin → section générique
+          sections.push({ type: 'text', text: clean(l) });
         }
       }
     });
@@ -1743,16 +1781,14 @@ function AnalysisPanel({ match, onClose }) {
       if (s.type === 'verdict') {
         const isValue = s.text.includes('VALUE') || s.text.includes('value');
         const isPiege = s.text.includes('PIÈGE') || s.text.includes('piège');
-        const col = isValue ? C.green : isPiege ? '#dc2626' : '#111827';
         const bg = isValue ? 'linear-gradient(135deg,#052e16,#166534)' : isPiege ? 'linear-gradient(135deg,#450a0a,#dc2626)' : 'linear-gradient(135deg,#111827,#374151)';
         return (
           <div key={i} style={{background:bg,borderRadius:16,padding:"16px 18px",marginBottom:10}} className="anim-scalein">
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",fontWeight:600,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Verdict</div>
-            <div style={{fontSize:17,fontWeight:900,color:"#fff",lineHeight:1.3}}>{s.text.replace(/^⚡\s*/,'')}</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Verdict</div>
+            <div style={{fontSize:16,fontWeight:900,color:"#fff",lineHeight:1.3}}>{s.text.replace(/^⚡\s*/,'')}</div>
           </div>
         );
       }
-
       if (s.type === 'confiance') {
         const num = s.text.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
         const score = num ? parseFloat(num[1]) : null;
@@ -1760,17 +1796,16 @@ function AnalysisPanel({ match, onClose }) {
         const col = pct >= 70 ? C.green : pct >= 50 ? '#ca8a04' : '#dc2626';
         return (
           <div key={i} style={{background:"#f9fafb",border:`1.5px solid ${C.border}`,borderRadius:13,padding:"12px 16px",marginBottom:10}} className="anim-fadeup">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:score?8:0}}>
               <span style={{fontSize:12,fontWeight:700,color:C.gray,textTransform:"uppercase",letterSpacing:0.8}}>Confiance</span>
               <span style={{fontSize:16,fontWeight:900,color:col}}>{score ? `${score}/10` : s.text.replace(/^🎯 CONFIANCE\s*:\s*/,'')}</span>
             </div>
             {score && <div style={{height:6,background:"#e5e7eb",borderRadius:99,overflow:"hidden"}}>
-              <div style={{height:"100%",width:`${pct}%`,background:col,borderRadius:99,transition:"width 0.8s ease"}}/>
+              <div style={{height:"100%",width:`${pct}%`,background:col,borderRadius:99}}/>
             </div>}
           </div>
         );
       }
-
       if (s.type === 'signal') {
         const isValue = s.text.includes('💎') || s.text.includes('VALUE');
         const isPiege = s.text.includes('🪤') || s.text.includes('PIÈGE');
@@ -1778,42 +1813,38 @@ function AnalysisPanel({ match, onClose }) {
         const bg = isValue ? C.lightGreen : isPiege ? '#fef2f2' : '#fffbeb';
         const bord = isValue ? C.borderGreen : isPiege ? '#fca5a5' : '#fde68a';
         const icon = isValue ? '💎' : isPiege ? '🪤' : '⚖️';
-        const label = isValue ? 'Value bet' : isPiege ? 'Piège détecté' : 'Cote juste';
+        const label = isValue ? 'Value bet détecté' : isPiege ? 'Piège détecté' : 'Cote juste';
         return (
-          <div key={i} style={{background:bg,border:`2px solid ${bord}`,borderRadius:13,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"center",gap:10}} className="anim-fadeup">
-            <span style={{fontSize:24}}>{icon}</span>
+          <div key={i} style={{background:bg,border:`2px solid ${bord}`,borderRadius:13,padding:"12px 16px",marginBottom:10,display:"flex",alignItems:"flex-start",gap:10}} className="anim-fadeup">
+            <span style={{fontSize:22,flexShrink:0}}>{icon}</span>
             <div>
-              <div style={{fontSize:13,fontWeight:800,color:col}}>{label}</div>
-              <div style={{fontSize:12,color:col,opacity:0.8,marginTop:2}}>{s.text.replace(/^🔍 SIGNAL MARCHÉ\s*:\s*/,'').replace(/💎|🪤|⚖️/g,'').trim()}</div>
+              <div style={{fontSize:13,fontWeight:800,color:col,marginBottom:3}}>{label}</div>
+              <div style={{fontSize:12,color:col,opacity:0.85,lineHeight:1.5}}>{s.text.replace(/^🔍 SIGNAL MARCHÉ\s*:\s*/,'').replace(/💎|🪤|⚖️/g,'').trim()}</div>
             </div>
           </div>
         );
       }
-
       if (s.type === 'best') {
         return (
-          <div key={i} style={{background:"linear-gradient(135deg,#052e16,#16a34a)",borderRadius:16,padding:"18px 20px",marginBottom:10,marginTop:6}} className="anim-scalein">
-            <div style={{fontSize:11,color:"#86efac",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🏆 Meilleur pari du match</div>
+          <div key={i} style={{background:"linear-gradient(135deg,#052e16,#16a34a)",borderRadius:16,padding:"18px 20px",marginBottom:10,marginTop:4}} className="anim-scalein">
+            <div style={{fontSize:10,color:"#86efac",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>🏆 Meilleur pari du match</div>
             {s.text && <div style={{fontSize:15,color:"#fff",fontWeight:800,lineHeight:1.4,marginBottom:s.extras?.length?10:0}}>{s.text}</div>}
-            {s.extras && s.extras.map((e,j) => (
-              <div key={j} style={{fontSize:12,color:"#bbf7d0",marginTop:4,lineHeight:1.5}}>{e}</div>
-            ))}
+            {s.extras?.map((e,j) => <div key={j} style={{fontSize:12,color:"#bbf7d0",marginTop:4,lineHeight:1.5}}>{e}</div>)}
           </div>
         );
       }
-
       if (s.type === 'bets' && s.items?.length) {
         return (
           <div key={i} style={{marginBottom:12}} className="anim-fadeup">
-            <div style={{fontSize:12,fontWeight:800,color:"#7c3aed",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8,padding:"6px 10px",background:"#f5f3ff",borderRadius:8,display:"inline-block"}}>{s.title}</div>
+            <div style={{fontSize:11,fontWeight:800,color:"#7c3aed",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8,padding:"5px 10px",background:"#f5f3ff",borderRadius:8,display:"inline-block"}}>{s.title}</div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               {s.items.map((item,j) => {
-                const isValue = item.includes('VALUE') || item.toLowerCase().includes('value');
                 const conf = item.match(/confiance\s*:?\s*(\d+)\/10/i);
+                const isGood = item.includes('VALUE') || (conf && parseFloat(conf[1]) >= 7);
                 return (
-                  <div key={j} style={{background:isValue?C.lightGreen:"#f9fafb",border:`1.5px solid ${isValue?C.borderGreen:C.border}`,borderRadius:11,padding:"10px 14px",lineHeight:1.5}}>
-                    <div style={{fontSize:13,color:isValue?"#166534":"#374151",fontWeight:600}}>{item}</div>
-                    {conf && <div style={{marginTop:4,height:4,background:"#e5e7eb",borderRadius:99,overflow:"hidden"}}>
+                  <div key={j} style={{background:isGood?C.lightGreen:"#f9fafb",border:`1.5px solid ${isGood?C.borderGreen:C.border}`,borderRadius:11,padding:"10px 14px"}}>
+                    <div style={{fontSize:13,color:isGood?"#166534":"#374151",fontWeight:600,lineHeight:1.5}}>{item}</div>
+                    {conf && <div style={{marginTop:6,height:4,background:"#e5e7eb",borderRadius:99,overflow:"hidden"}}>
                       <div style={{height:"100%",width:`${parseFloat(conf[1])/10*100}%`,background:C.green,borderRadius:99}}/>
                     </div>}
                   </div>
@@ -1823,20 +1854,20 @@ function AnalysisPanel({ match, onClose }) {
           </div>
         );
       }
-
-      if (s.type === 'section' && s.items?.length) {
+      if (s.type === 'section') {
         return (
           <div key={i} style={{marginBottom:12}} className="anim-fadeup">
-            <div style={{fontSize:12,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8,borderLeft:`3px solid ${C.green}`,paddingLeft:10}}>{s.title?.replace(/^📊\s*/,'').replace(/^⚽\s*/,'')}</div>
-            <div style={{background:"#f9fafb",borderRadius:12,padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
-              {s.items.map((item,j) => (
-                <div key={j} style={{fontSize:13,color:"#374151",lineHeight:1.6,paddingBottom:j<s.items.length-1?6:0,borderBottom:j<s.items.length-1?`1px solid ${C.border}`:"none"}}>{item}</div>
-              ))}
-            </div>
+            <div style={{fontSize:11,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8,borderLeft:`3px solid ${C.green}`,paddingLeft:10}}>{s.title?.replace(/^📊\s*/,'').replace(/^⚽\s*/,'').replace(/^📋\s*/,'')}</div>
+            {s.items?.length > 0 && (
+              <div style={{background:"#f9fafb",borderRadius:12,padding:"12px 14px",display:"flex",flexDirection:"column",gap:6}}>
+                {s.items.map((item,j) => (
+                  <div key={j} style={{fontSize:13,color:"#374151",lineHeight:1.65,paddingBottom:j<s.items.length-1?6:0,borderBottom:j<s.items.length-1?`1px solid ${C.border}`:"none"}}>{item}</div>
+                ))}
+              </div>
+            )}
           </div>
         );
       }
-
       if (s.type === 'warning') {
         return (
           <div key={i} style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:12,padding:"12px 14px",marginBottom:10,display:"flex",gap:10,alignItems:"flex-start"}} className="anim-fadeup">
@@ -1845,21 +1876,22 @@ function AnalysisPanel({ match, onClose }) {
           </div>
         );
       }
-
       if (s.type === 'compo') {
         return (
           <div key={i} style={{background:"#f9fafb",border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:10}} className="anim-fadeup">
-            <div style={{fontSize:12,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>👥 Composition</div>
-            {s.items?.map((item,j) => (
-              <div key={j} style={{fontSize:13,color:"#4b5563",lineHeight:1.6}}>{item}</div>
-            ))}
+            <div style={{fontSize:11,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8}}>👥 Composition</div>
+            {s.items?.map((item,j) => <div key={j} style={{fontSize:13,color:"#4b5563",lineHeight:1.65}}>{item}</div>)}
           </div>
         );
       }
-
+      if (s.type === 'text') {
+        return <div key={i} style={{fontSize:13,color:"#4b5563",lineHeight:1.65,marginBottom:4}}>{s.text}</div>;
+      }
       return null;
     });
   };
+
+
 
   const lines = renderAnalysis(analysis);
 
