@@ -203,9 +203,20 @@ async function updateBet(email, betId, updates, token) {
     return getBets(email, token);
   } catch(e) { return []; }
 }
+// ─── GESTION ABONNEMENT SUPABASE ─────────────────────────────────
 async function saveSubscription(email, sub, token) {
   try {
     const tok = token || SUPABASE_ANON_KEY;
+    // Utilise UPSERT (DELETE + INSERT) pour garantir la mise à jour
+    const body = {
+      user_email: email,
+      status: sub.status,
+      trial_started_at: sub.trial_started_at || sub.trialStartedAt || null,
+      trial_ends_at: sub.trial_ends_at || sub.trialEndsAt || null,
+      paid_at: sub.paid_at || sub.paidAt || null,
+      plan: sub.plan || null,
+      updated_at: new Date().toISOString(),
+    };
     const r = await fetch(`${SUPABASE_URL}/rest/v1/subscriptions`, {
       method: "POST",
       headers: {
@@ -214,25 +225,52 @@ async function saveSubscription(email, sub, token) {
         "Authorization": `Bearer ${tok}`,
         "Prefer": "resolution=merge-duplicates",
       },
-      body: JSON.stringify({ user_email: email, ...sub, updated_at: new Date().toISOString() }),
+      body: JSON.stringify(body),
     });
     return r.ok;
   } catch(e) { return false; }
 }
+
 async function getSubscription(email, token) {
   try {
     const tok = token || SUPABASE_ANON_KEY;
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/subscriptions?user_email=eq.${encodeURIComponent(email)}&limit=1`, {
-      headers: {
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${tok}`,
-      },
-    });
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/subscriptions?user_email=eq.${encodeURIComponent(email)}&limit=1`,
+      {
+        headers: {
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${tok}`,
+        },
+      }
+    );
     if (!r.ok) return null;
     const rows = await r.json();
-    return rows && rows.length > 0 ? rows[0] : null;
+    if (!rows || rows.length === 0) return null;
+    const row = rows[0];
+    // Normalise snake_case → camelCase pour compatibilité
+    return {
+      ...row,
+      trialStartedAt: row.trial_started_at,
+      trialEndsAt: row.trial_ends_at,
+      paidAt: row.paid_at,
+    };
   } catch(e) { return null; }
 }
+
+// Anti-abus : vérifie si un email a déjà utilisé un essai gratuit
+async function hasUsedTrial(email) {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/subscriptions?user_email=eq.${encodeURIComponent(email)}&select=trial_started_at&limit=1`,
+      { headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` } }
+    );
+    if (!r.ok) return false;
+    const rows = await r.json();
+    return rows && rows.length > 0 && rows[0].trial_started_at !== null;
+  } catch(e) { return false; }
+}
+
+
 async function saveLastSeen(email, token) {
   try {
     await sb.upsert("profiles", { email, last_seen: new Date().toISOString() }, token);
@@ -1973,18 +2011,23 @@ function AddBetModal({ match, user, onSave, onClose }) {
 function getSubStatus(sub) {
   if (!sub) return { status: "none" };
   const now = new Date();
-  // Supabase retourne snake_case, le code local utilise camelCase — on supporte les deux
-  const trialEndsAt = sub.trialEndsAt || sub.trial_ends_at;
+  // Support snake_case (Supabase) et camelCase (local)
+  const trialEndsAt = sub.trial_ends_at || sub.trialEndsAt;
   const status = sub.status;
+
   if (status === "active") return { status: "active" };
+
   if (trialEndsAt) {
     const trialEnd = new Date(trialEndsAt);
+    if (isNaN(trialEnd.getTime())) return { status: "none" };
     if (now < trialEnd) {
-      const daysLeft = Math.ceil((trialEnd - now) / (1000*60*60*24));
+      const daysLeft = Math.max(0, Math.ceil((trialEnd - now) / (1000*60*60*24)));
       return { status: "trial", daysLeft };
     }
     return { status: "expired" };
   }
+
+  if (status === "trial") return { status: "expired" };
   return { status: "none" };
 }
 
@@ -2063,18 +2106,27 @@ function SubscriptionScreen({ user, sub, onActivateTrial, onSubscribed }) {
   const status = getSubStatus(sub);
 
   const startTrial = async () => {
+    setLoading(true);
+    // Anti-abus : vérifie si cet email a déjà eu un essai
+    const alreadyUsed = await hasUsedTrial(user.email);
+    if (alreadyUsed) {
+      setError("Cet email a déjà bénéficié de l'essai gratuit. Abonne-toi pour continuer.");
+      setLoading(false);
+      return;
+    }
     const now = new Date();
     const trialEnd = new Date(now.getTime() + TRIAL_DAYS*24*60*60*1000);
     const newSub = {
       status: "trial",
       trial_started_at: now.toISOString(),
       trial_ends_at: trialEnd.toISOString(),
-      // camelCase aussi pour la compatibilité locale
       trialStartedAt: now.toISOString(),
       trialEndsAt: trialEnd.toISOString(),
     };
-    await saveSubscription(user.email, newSub, user.token);
-    onActivateTrial(newSub);
+    const saved = await saveSubscription(user.email, newSub, user.token);
+    if (saved) onActivateTrial(newSub);
+    else setError("Erreur lors de l'activation. Réessaie.");
+    setLoading(false);
   };
 
   const pay = async () => {
