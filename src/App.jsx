@@ -814,25 +814,96 @@ RÈGLES :
 - Cherche compositions officielles ou probables sur internet
 - UNIQUEMENT LE JSON, RIEN D'AUTRE`;
 
+// ─── ANIMATION CHARGEMENT COMPOSITIONS ────────────────────────────
+function LineupLoadingAnimation({ match }) {
+  const [tick, setTick] = useState(0);
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 50);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    let i = 0;
+    const t = setInterval(() => { i = (i+1)%4; setStep(i); }, 2500);
+    return () => clearInterval(t);
+  }, []);
+
+  const stepLabels = [
+    {icon:"🔍", text:"Recherche composition officielle..."},
+    {icon:"🧩", text:"Détection formation tactique..."},
+    {icon:"📊", text:"Analyse stats individuelles..."},
+    {icon:"💎", text:"Calcul probabilités joueurs..."},
+  ];
+
+  const positions = [
+    {x:50,y:88},{x:20,y:72},{x:38,y:72},{x:62,y:72},{x:80,y:72},
+    {x:28,y:52},{x:50,y:52},{x:72,y:52},{x:30,y:30},{x:50,y:25},{x:70,y:30},
+  ];
+  const visibleCount = Math.min(11, Math.floor(tick/8)+1);
+
+  return (
+    <div style={{padding:"16px 0 24px"}}>
+      <style>{`
+        @keyframes playerAppear{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}
+        @keyframes scanLine2{from{top:0%}to{top:100%}}
+      `}</style>
+      <div style={{textAlign:"center",marginBottom:14}}>
+        <div style={{fontSize:14,fontWeight:800,color:"#111827",marginBottom:3}}>{stepLabels[step].icon} {stepLabels[step].text}</div>
+        <div style={{fontSize:12,color:"#6b7280"}}>{match.p1} vs {match.p2}</div>
+      </div>
+      <div style={{position:"relative",width:"100%",height:180,borderRadius:14,overflow:"hidden",marginBottom:14,background:"#166534"}}>
+        <svg width="100%" height="100%" viewBox="0 0 200 180" style={{position:"absolute",inset:0}}>
+          <rect width="200" height="180" fill="#166534"/>
+          <rect x="8" y="10" width="184" height="160" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"/>
+          <line x1="8" y1="90" x2="192" y2="90" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"/>
+          <circle cx="100" cy="90" r="20" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.2"/>
+          <circle cx="100" cy="90" r="2" fill="rgba(255,255,255,0.7)"/>
+          <rect x="8" y="40" width="32" height="60" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1"/>
+          <rect x="160" y="40" width="32" height="60" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1"/>
+        </svg>
+        <div style={{position:"absolute",left:0,right:0,height:2,background:"rgba(74,222,128,0.6)",animation:"scanLine2 2s linear infinite",top:0,zIndex:5}}/>
+        {positions.slice(0,visibleCount).map((pos,i)=>(
+          <div key={i} style={{position:"absolute",left:`${pos.x}%`,top:`${pos.y}%`,transform:"translate(-50%,-50%)",width:22,height:22,borderRadius:"50%",background:i===0?"#1565c0":"#c62828",border:"2px solid rgba(255,255,255,0.9)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:900,color:"#fff",animation:"playerAppear 0.3s ease both",boxShadow:"0 2px 6px rgba(0,0,0,0.4)",zIndex:10}}>{i+1}</div>
+        ))}
+        <div style={{position:"absolute",bottom:0,left:0,right:0,height:3,background:"rgba(0,0,0,0.3)"}}>
+          <div style={{height:"100%",width:`${(visibleCount/11)*100}%`,background:"#4ade80",transition:"width 0.3s ease"}}/>
+        </div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {stepLabels.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",borderRadius:8,background:step===i?"#f0fdf4":"transparent",transition:"all 0.3s"}}>
+            <span style={{fontSize:16,opacity:step===i?1:0.4}}>{s.icon}</span>
+            <span style={{fontSize:12,color:step===i?"#166534":"#9ca3af",fontWeight:step===i?700:400}}>{s.text}</span>
+            {step>i&&<span style={{marginLeft:"auto",fontSize:12,color:"#16a34a"}}>✓</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 async function analyzeLineup(match) {
-  const res = await fetch(`${BACKEND_URL}/api/analyze`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: [{ role: "user", content: `Match : ${match.p1} vs ${match.p2} (${match.tournament}, ${match.date} à ${match.time}). Cherche les compositions officielles ou probables sur internet. Retourne UNIQUEMENT le JSON demandé avec les 11 titulaires de chaque équipe, leur formation tactique exacte, et leurs stats sur les 5 derniers matchs.` }],
-      system: LINEUP_JSON_PROMPT,
-      max_tokens: 3000,
-      useWebSearch: true,
-    })
-  });
-  const data = await res.json();
-  // Parse le JSON retourné
   try {
+    const res = await fetch(`${BACKEND_URL}/api/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: `Match: ${match.p1} vs ${match.p2} — ${match.tournament} — ${match.date}. Cherche la composition officielle ou probable sur internet. Retourne UNIQUEMENT ce JSON avec 11 joueurs par équipe: {"team1":{"name":"${match.p1}","formation":"4-3-3","color":"#1565c0","players":[{"name":"Prénom Nom","position":"GK","number":1,"row":0,"col":0,"stats":"5J: 5tit|G/A:0/0","form":"Solide","physical":"Fit","perso":"RAS","butPct":2,"passePct":5,"alert":false}]},"team2":{"name":"${match.p2}","formation":"4-4-2","color":"#c62828","players":[]}} — row: 0=GK,1=DEF,2=MDéf,3=MIL,4=MOff,5=ATT — col: position gauche à droite — alert:true si butPct ou passePct>70 — UNIQUEMENT LE JSON` }],
+        system: "Tu retournes UNIQUEMENT du JSON valide. Zéro texte avant ou après. Zéro markdown.",
+        max_tokens: 3000,
+        useWebSearch: true,
+      })
+    });
+    const data = await res.json();
     const text = data.text || "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) return JSON.parse(jsonMatch[0]);
-  } catch(e) {}
-  return null;
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (parsed.team1?.players?.length > 0 && parsed.team2?.players?.length > 0) return parsed;
+    return null;
+  } catch(e) { return null; }
 }
 
 // Calcule les positions (x, y) des joueurs sur le terrain selon la formation
@@ -2234,20 +2305,31 @@ function AnalysisLoadingAnimation({ sport }) {
       <div style={{position:"relative",width:"100%",height:150,borderRadius:14,overflow:"hidden",marginBottom:14,background:isFootball?"#166534":"#c96a45"}}>
         <svg width="100%" height="100%" viewBox="0 0 300 150" style={{position:"absolute",inset:0}}>
           {isFootball ? <>
-            {[0,1,2,3,4].map(i=><rect key={i} x={i*60} y="0" width="60" height="150" fill={i%2===0?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.04)"}/>)}
-            <rect x="10" y="8" width="280" height="134" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5"/>
-            <line x1="10" y1="75" x2="290" y2="75" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5"/>
-            <circle cx="150" cy="75" r="22" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.2"/>
-            <rect x="10" y="30" width="42" height="55" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1"/>
-            <rect x="248" y="30" width="42" height="55" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1"/>
+            {/* Fond vert uniforme */}
+            <rect width="300" height="150" fill="#166534"/>
+            {/* Bandes de tonte discrètes */}
+            {[0,1,2,3,4].map(i=><rect key={i} x={i*60} y="0" width="60" height="150" fill={i%2===0?"rgba(255,255,255,0.025)":"rgba(0,0,0,0.025)"}/>)}
+            {/* Bordure du terrain */}
+            <rect x="12" y="10" width="276" height="130" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="2"/>
+            {/* Ligne médiane */}
+            <line x1="12" y1="75" x2="288" y2="75" stroke="rgba(255,255,255,0.8)" strokeWidth="2"/>
+            {/* Rond central parfaitement centré */}
+            <circle cx="150" cy="75" r="24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.8"/>
+            <circle cx="150" cy="75" r="2" fill="rgba(255,255,255,0.8)"/>
+            {/* Surface de réparation gauche — symétrique */}
+            <rect x="12" y="37" width="44" height="76" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5"/>
+            {/* Surface de réparation droite — symétrique */}
+            <rect x="244" y="37" width="44" height="76" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5"/>
           </> : <>
+            {/* Court terre battue */}
+            <rect width="300" height="150" fill="#c96a45"/>
             {[0,1,2,3,4,5].map(i=><line key={i} x1="0" y1={i*25} x2="300" y2={i*25} stroke="rgba(0,0,0,0.05)" strokeWidth="0.8"/>)}
-            <rect x="15" y="10" width="270" height="130" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2"/>
+            <rect x="15" y="10" width="270" height="130" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="2"/>
             <line x1="15" y1="75" x2="285" y2="75" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5"/>
-            <rect x="65" y="10" width="170" height="65" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.2"/>
-            <rect x="65" y="75" width="170" height="65" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.2"/>
-            <line x1="150" y1="10" x2="150" y2="75" stroke="rgba(255,255,255,0.4)" strokeWidth="1"/>
-            <line x1="150" y1="75" x2="150" y2="140" stroke="rgba(255,255,255,0.4)" strokeWidth="1"/>
+            <rect x="65" y="10" width="170" height="65" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5"/>
+            <rect x="65" y="75" width="170" height="65" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5"/>
+            <line x1="150" y1="10" x2="150" y2="75" stroke="rgba(255,255,255,0.5)" strokeWidth="1.2"/>
+            <line x1="150" y1="75" x2="150" y2="140" stroke="rgba(255,255,255,0.5)" strokeWidth="1.2"/>
           </>}
         </svg>
 
@@ -2842,14 +2924,7 @@ function LineupPanel({ match, onClose }) {
           )}
 
           {loading && (
-            <div style={{textAlign:"center",padding:"36px 0"}}>
-              <style>{`@keyframes fieldPulse{0%,100%{opacity:1}50%{opacity:0.6}}`}</style>
-              <div style={{fontSize:52,marginBottom:16,display:"inline-block",animation:"fieldPulse 1.5s ease infinite"}}>🔍</div>
-              <div style={{fontSize:15,fontWeight:800,color:"#111827",marginBottom:12}}>Recherche des compositions...</div>
-              {["Détection de la formation","Recherche des titulaires","Analyse des stats individuelles","Calcul des probabilités"].map((s,i)=>(
-                <div key={i} style={{fontSize:13,color:C.gray,padding:"4px 0",animation:`stepFade 2s ease ${i*0.3}s infinite`}}>· {s}</div>
-              ))}
-            </div>
+            <LineupLoadingAnimation match={match} />
           )}
 
           {lineup && !loading && (
@@ -3622,10 +3697,12 @@ export default function BetTrust() {
     }} />;
   }
 
-  if (subLoaded) {
+  // Admin bypass — toujours actif, indépendamment de Supabase
+  const isAdmin = user?.email === "solo75lifee@gmail.com";
+
+  if (!isAdmin && subLoaded) {
     const status = getSubStatus(sub);
-    const isAdmin = user.email === "solo75lifee@gmail.com";
-    if (!isAdmin && (status.status === "none" || status.status === "expired")) {
+    if (status.status === "none" || status.status === "expired") {
       return (
         <SubscriptionScreen
           user={user}
