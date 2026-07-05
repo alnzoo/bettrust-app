@@ -257,7 +257,32 @@ async function getSubscription(email, token) {
   } catch(e) { return null; }
 }
 
-// Anti-abus : vérifie si un email a déjà utilisé un essai gratuit
+// ─── ANTI-ABUS — Fingerprint appareil ────────────────────────────
+// Génère un identifiant unique basé sur les caractéristiques de l'appareil
+// Pas 100% infaillible mais bloque la majorité des abus
+function getDeviceFingerprint() {
+  try {
+    const nav = window.navigator;
+    const screen = window.screen;
+    const fp = [
+      nav.userAgent,
+      nav.language,
+      nav.platform,
+      screen.width + 'x' + screen.height,
+      screen.colorDepth,
+      nav.hardwareConcurrency,
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    ].join('|');
+    // Hash simple
+    let hash = 0;
+    for (let i = 0; i < fp.length; i++) {
+      hash = ((hash << 5) - hash) + fp.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(36);
+  } catch(e) { return 'unknown'; }
+}
+
 async function hasUsedTrial(email) {
   try {
     const r = await fetch(
@@ -269,6 +294,26 @@ async function hasUsedTrial(email) {
     return rows && rows.length > 0 && rows[0].trial_started_at !== null;
   } catch(e) { return false; }
 }
+
+// Vérifie si cet appareil a déjà activé un essai (peu importe l'email)
+async function deviceHasUsedTrial() {
+  try {
+    const fp = getDeviceFingerprint();
+    const stored = localStorage.getItem('bt_device_fp');
+    if (stored && stored !== fp) return false; // Appareil différent = nouveau
+    if (localStorage.getItem('bt_trial_used') === 'true') return true;
+    return false;
+  } catch(e) { return false; }
+}
+
+function markDeviceTrialUsed() {
+  try {
+    localStorage.setItem('bt_trial_used', 'true');
+    localStorage.setItem('bt_device_fp', getDeviceFingerprint());
+  } catch(e) {}
+}
+
+
 
 
 async function saveLastSeen(email, token) {
@@ -437,71 +482,129 @@ const DEMO_MATCHES = {
 };
 
 // ─── AI ANALYSIS ──────────────────────────────────────────────────
-const SYSTEM_PROMPT = `Tu es l'analyste IA de BetTrust. Tu penses comme un bookmaker et un trader sportif.
+const SYSTEM_PROMPT = `Tu es l'analyste sportif de BetTrust. Tu es un expert qui combine la rigueur d'un data scientist, le flair d'un scout professionnel et la logique d'un trader sportif.
 
-MÉTHODE (sois RAPIDE et PRÉCIS) :
-1. Convertis les cotes en probabilités implicites
-2. Cherche la forme récente, état physique, météo, contexte
-3. Identifie si le marché sur-cote ou sous-cote
+TON OBJECTIF : Faire une analyse 360° complète et honnête, puis identifier la meilleure opportunité de pari disponible — value bet si elle existe, sinon le choix le plus safe et intéressant parmi tous les marchés disponibles.
 
-FORMAT OBLIGATOIRE — respecte exactement ces balises :
+ANALYSE 360° OBLIGATOIRE — dans cet ordre :
 
-⚡ VERDICT : [qui va gagner et pourquoi en 1 phrase]
+1. RÉSULTATS RÉCENTS
+Cherche les 5 derniers matchs de chaque joueur. Forme actuelle, séries de victoires/défaites, niveau des adversaires affrontés.
+
+2. STATISTIQUES AVANCÉES
+Stats de service/retour pour le tennis (% 1er service, points gagnés derrière 1er et 2ème service, break points). Aces, doubles fautes moyennes. Rapidité de surface actuelle.
+
+3. CONDITION PHYSIQUE ET BLESSURES
+Blessures récentes ou en cours. Minutes jouées ces 7 derniers jours. Signaux de fatigue. Tout signe de gêne physique dans les derniers matchs.
+
+4. CONDITIONS MÉTÉOROLOGIQUES
+Température, vent, humidité à l'heure du match. Impact concret sur le style de jeu (vent fort = favorise les gros serveurs, froid = ralentit les échanges).
+
+5. ENJEU ET CONTEXTE DU MATCH
+Qu'est-ce que chaque joueur/équipe a à gagner ou perdre ? Tour du tournoi, classement, qualification en jeu. Un joueur en mode "rien à perdre" joue différemment.
+
+6. AVANTAGE PUBLIC ET TERRAIN
+Stade neutre ou avantage domicile ? La foule peut changer un match. Support spécifique pour un joueur local.
+
+7. CONTEXTE HORS MATCH
+Déclarations récentes en conférence de presse. Posts sur les réseaux sociaux. Rumeurs fiables. État mental apparent. Événements personnels récents qui pourraient affecter la concentration.
+
+8. ÉVÉNEMENTS MARQUANTS RÉCENTS
+Blessure dans un match précédent, performance exceptionnelle ou catastrophique, changement de coach, conflit interne, record en jeu, revanche personnelle.
+
+9. ANALYSE DES COTES ET DU MARCHÉ
+Convertis chaque cote en probabilité implicite. Compare avec ta propre estimation. Un écart >8% = signal fort. Cherche les marchés sur Winamax, Betclic, Unibet : vainqueur, handicap sets, total jeux, aces over/under, score exact, tie-break, etc.
+
+10. VERDICT HONNÊTE
+Si tu identifies une value bet claire : présente-la avec la cote et le marché exact.
+Si tu n'en identifies pas : dis-le clairement et propose le pari le plus intéressant et safe parmi tous les marchés disponibles — pas forcément le vainqueur, explore les marchés alternatifs.
+
+FORMAT STRICT — respecte exactement ces balises :
+
+⚡ VERDICT : [résumé en 1-2 phrases de ce que tu as trouvé]
 🎯 CONFIANCE : X/10
-🔍 SIGNAL MARCHÉ : [💎 Value bet / 🪤 Piège / ⚖️ Cote juste] — Prob. marché XX% vs Prob. réelle estimée XX%
+🔍 SIGNAL MARCHÉ : [💎 Value bet identifiée / ⚖️ Pas de value bet claire] — Prob. marché XX% vs estimation XX%
 
-📊 ANALYSE INSIDER :
-[3-4 points clés : forme, physique, contexte, météo — sois concis]
+📊 ANALYSE 360° :
+[Résumé structuré des 8 premiers points — concis mais complet, sois honnête sur ce que tu trouves ou ne trouves pas]
 
-🎯 TOUS LES PARIS RECOMMANDÉS :
-→ [Marché] : [Sélection] @ [Cote] — Confiance X/10 — [Raison courte]
-→ [Marché] : [Sélection] @ [Cote] — Confiance X/10 — [Raison courte]
-→ [Marché] : [Sélection] @ [Cote] — Confiance X/10 — [Raison courte]
+🎯 MARCHÉS DISPONIBLES ANALYSÉS :
+→ [Marché] : [Sélection] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
+→ [Marché] : [Sélection] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
+→ [Marché] : [Sélection] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
 
-🏆 LE MEILLEUR PARI DU MATCH :
-[Sélection exacte] @ [Cote exacte] — Confiance [X]/10
-Marché : [nom exact du marché]
-Pourquoi : [1 phrase claire et directe]
+🏆 MA RECOMMANDATION FINALE :
+[SI VALUE BET TROUVÉE] → 💎 VALUE BET : [Sélection exacte] @ [Cote] sur [Marché exact] — Confiance [X]/10 — [Raison en 1 phrase]
+[SI PAS DE VALUE BET] → ⚖️ PAS DE VALUE BET SUR CE MATCH. Le pari le plus intéressant reste : [Sélection] @ [Cote] sur [Marché] — [Pourquoi c'est le meilleur choix disponible]
 
-⚠️ RISQUE : [une seule chose qui pourrait tout changer]
+⚠️ ATTENTION : [La seule chose qui pourrait tout changer — sois honnête]
 ---`;
 
-const FOOTBALL_SYSTEM_PROMPT = `Tu es l'analyste football IA de BetTrust. Tu penses comme un bookmaker et un trader sportif.
+const FOOTBALL_SYSTEM_PROMPT = `Tu es l'analyste football de BetTrust. Tu combines la rigueur d'un data scientist, le regard d'un scout professionnel et la logique d'un trader sportif.
 
-MÉTHODE (sois RAPIDE et PRÉCIS) :
-1. Convertis les cotes en probabilités implicites
-2. Cherche compositions probables, forme des 5 derniers matchs, xG
-3. Analyse : buts probables, buteurs, tirs, corners, mi-temps
+TON OBJECTIF : Faire une analyse 360° complète et honnête du match, puis identifier la meilleure opportunité de pari — value bet si elle existe, sinon le choix le plus safe et intéressant parmi TOUS les marchés disponibles.
 
-FORMAT OBLIGATOIRE — respecte exactement ces balises :
+ANALYSE 360° OBLIGATOIRE — dans cet ordre :
 
-⚡ VERDICT : [résultat probable en 1 phrase directe]
+1. RÉSULTATS RÉCENTS
+5 derniers matchs de chaque équipe. Forme, séries, niveau des adversaires. Résultats à domicile vs extérieur.
+
+2. STATISTIQUES AVANCÉES
+xG (expected goals) moyens sur les 5 derniers matchs. xG concédés. Tirs cadrés par match. Possession moyenne. Pressing et duels gagnés. Ces chiffres révèlent la vraie valeur d'une équipe, pas juste les résultats.
+
+3. COMPOSITIONS ET JOUEURS CLÉS
+Composition probable ou officielle. Joueurs absents ou incertains. Impact réel des absences. Joueurs en forme vs en difficulté. Buteurs et passeurs décisifs récents avec leurs stats.
+
+4. CONDITION PHYSIQUE ET BLESSURES
+Calendrier chargé ? Match de coupe en milieu de semaine ? Voyage long ? Fatigue accumulée. Blessures confirmées ou douteuses.
+
+5. CONDITIONS MÉTÉOROLOGIQUES
+Température, vent, pluie. Impact concret : pluie favorise le jeu direct et les équipes physiques, vent fort perturbe les tirs lointains, froid extrême peut nuire aux équipes techniques.
+
+6. ENJEU ET CONTEXTE DU MATCH
+Qu'est-ce que chaque équipe a à gagner ou perdre ? Relégation, titre, qualification européenne, derby, revanche ? Une équipe sans enjeu peut sous-performer.
+
+7. AVANTAGE DOMICILE
+Le vrai avantage domicile de CE stade, avec CE public. Certains stades valent +0.5 but en avantage, d'autres rien.
+
+8. CONTEXTE HORS MATCH
+Déclarations du coach en conférence de presse. Ambiance dans le vestiaire. Tensions internes connues. Mercato en cours qui perturbe. Événements personnels marquants pour des joueurs clés.
+
+9. ANALYSE DES COTES ET DU MARCHÉ
+Convertis les cotes en probabilités implicites. Identifie la marge bookmaker. Compare avec tes estimations basées sur les xG. Cherche les marchés sur Winamax, Betclic, Unibet : résultat, double chance, both teams to score, over/under buts (-0.5 à +3.5), mi-temps, handicap, buteur à tout moment, passeur décisif, corners, cartons, score exact.
+
+10. VERDICT HONNÊTE
+Si tu identifies une value bet : présente-la clairement.
+Si tu n'en identifies pas : dis-le et propose le meilleur pari disponible parmi tous les marchés — explore les marchés alternatifs.
+
+FORMAT STRICT — respecte exactement ces balises :
+
+⚡ VERDICT : [résumé en 1-2 phrases de ce que tu as trouvé]
 🎯 CONFIANCE : X/10
-🔍 SIGNAL MARCHÉ : [💎 Value bet / 🪤 Piège / ⚖️ Cote juste] — Prob. marché XX% vs Prob. réelle XX%
+🔍 SIGNAL MARCHÉ : [💎 Value bet identifiée / ⚖️ Pas de value bet claire] — Prob. marché XX% vs estimation XX%
 
-📊 ANALYSE INSIDER :
-[Composition probable, forme récente, xG moyens, facteurs clés — sois concis]
+📊 ANALYSE 360° :
+[Résumé structuré et honnête — concis mais complet sur les 8 points clés]
 
-🎯 TOUS LES PARIS RECOMMANDÉS :
-→ [Marché exact] : [Sélection] @ [Cote] — Confiance X/10 — [Raison]
-→ [Marché exact] : [Sélection] @ [Cote] — Confiance X/10 — [Raison]
-→ [Marché exact] : [Sélection] @ [Cote] — Confiance X/10 — [Raison]
-→ [Buteur probable] : [Nom] @ [Cote] — Confiance X/10 — [Raison]
+🎯 MARCHÉS DISPONIBLES ANALYSÉS :
+→ [Marché exact] : [Sélection] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison]
+→ [Marché exact] : [Sélection] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison]
+→ [Marché exact] : [Sélection] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison]
+→ [Buteur probable] : [Nom] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison]
 
-🏆 LE MEILLEUR PARI DU MATCH :
-[Sélection exacte] @ [Cote exacte] — Confiance [X]/10
-Marché : [nom exact : Over 2.5 buts / Victoire X / Buteur Y...]
-Pourquoi : [1 phrase claire et directe]
+🏆 MA RECOMMANDATION FINALE :
+[SI VALUE BET TROUVÉE] → 💎 VALUE BET : [Sélection exacte] @ [Cote] sur [Marché exact] — Confiance [X]/10 — [Raison en 1 phrase]
+[SI PAS DE VALUE BET] → ⚖️ PAS DE VALUE BET SUR CE MATCH. Le pari le plus intéressant reste : [Sélection] @ [Cote] sur [Marché] — [Pourquoi c'est le meilleur choix disponible]
 
-⚠️ RISQUE : [une seule chose qui pourrait tout changer]
+⚠️ ATTENTION : [La seule chose qui pourrait tout changer]
 ---`;
 
 async function analyzeMatch(match) {
   const isFootball = match.sport === "football";
   const systemPrompt = isFootball ? FOOTBALL_SYSTEM_PROMPT : SYSTEM_PROMPT;
   const userContent = isFootball
-    ? `Analyse comme un insider de haut niveau : ${match.p1} vs ${match.p2} (${match.tournament}, ${match.date} à ${match.time}). Cotes actuelles: ${match.p1}@${match.c1}${match.cN?` | Nul@${match.cN}`:""} | ${match.p2}@${match.c2}. Source: ${match.bookmaker}. Déconstruis les cotes, cherche les compositions, croise toutes les données disponibles. Je veux l'analyse que les bookmakers font eux-mêmes en interne — pas ce qu'ils montrent au public.`
-    : `Analyse comme un insider : ${match.p1} vs ${match.p2} (${match.tournament}, ${match.date} à ${match.time}). Cotes: ${match.p1}@${match.c1}${match.cN?` | Nul@${match.cN}`:""} | ${match.p2}@${match.c2}. Déconstruis les cotes, cherche tous les signaux physiques, mentaux, météo, contextuels. Trouve ce que le marché n a pas encore pricé.`;
+    ? `Match : ${match.p1} vs ${match.p2} — ${match.tournament} — ${match.date} à ${match.time}. Cotes : ${match.p1}@${match.c1}${match.cN?` | Nul@${match.cN}`:""} | ${match.p2}@${match.c2} (source: ${match.bookmaker}). Fais une analyse 360° complète sur ce match en cherchant : résultats récents, xG, compositions probables, blessures, météo, enjeu, contexte, avantage domicile. Puis identifie la meilleure opportunité de pari parmi TOUS les marchés disponibles (résultat, over/under, both teams score, mi-temps, buteurs, corners, handicap...). S'il y a une value bet, présente-la. Sinon, propose le pari le plus safe et intéressant disponible.`
+    : `Match : ${match.p1} vs ${match.p2} — ${match.tournament} — ${match.date} à ${match.time}. Cotes : ${match.p1}@${match.c1} | ${match.p2}@${match.c2} (source: ${match.bookmaker}). Fais une analyse 360° complète : résultats récents, stats de service/retour, forme sur cette surface, blessures, météo, enjeu du match, contexte personnel. Cherche les marchés disponibles sur Winamax/Betclic/Unibet : vainqueur, handicap sets, total jeux, aces, score exact, tie-break, etc. S'il y a une value bet, présente-la. Sinon, propose le pari le plus intéressant disponible.`;
 
   // Réessaie jusqu'à 2 fois si le serveur est endormi
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -515,7 +618,7 @@ async function analyzeMatch(match) {
         body: JSON.stringify({
           messages: [{ role: "user", content: userContent }],
           system: systemPrompt,
-          max_tokens: isFootball ? 1200 : 900,
+          max_tokens: isFootball ? 1800 : 1500,
           useWebSearch: true,
         })
       });
@@ -879,290 +982,309 @@ const THEMES = {
 // Fond SVG terrain de foot, vue de dessus stylisée façon croquis tactique
 function FootballFieldBackground() {
   return (
-    <svg width="100%" height="100%" viewBox="0 0 400 860" preserveAspectRatio="xMidYMin slice"
-      style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none"}}>
-      <defs>
-        {/* Dégradé principal pelouse — perspective du haut vers le bas */}
-        <linearGradient id="pitchGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="#0e3d1f" />
-          <stop offset="30%"  stopColor="#155c2e" />
-          <stop offset="60%"  stopColor="#1a6e35" />
-          <stop offset="100%" stopColor="#0f4220" />
-        </linearGradient>
-        {/* Bandes de tonte alternées — effet mowing stripes 3D */}
-        <linearGradient id="stripe1" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%"   stopColor="rgba(255,255,255,0)" />
-          <stop offset="50%"  stopColor="rgba(255,255,255,0.055)" />
-          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-        </linearGradient>
-        {/* Ombre perspective latérale */}
-        <linearGradient id="shadowL" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%"  stopColor="rgba(0,0,0,0.35)" />
-          <stop offset="18%" stopColor="rgba(0,0,0,0)" />
-        </linearGradient>
-        <linearGradient id="shadowR" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="82%" stopColor="rgba(0,0,0,0)" />
-          <stop offset="100%" stopColor="rgba(0,0,0,0.35)" />
-        </linearGradient>
-        {/* Ombre sol en bas (profondeur) */}
-        <linearGradient id="shadowB" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="75%" stopColor="rgba(0,0,0,0)" />
-          <stop offset="100%" stopColor="rgba(0,0,0,0.4)" />
-        </linearGradient>
-        {/* Brillance en haut (lumière zénithale) */}
-        <linearGradient id="lightTop" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"  stopColor="rgba(255,255,255,0.07)" />
-          <stop offset="22%" stopColor="rgba(255,255,255,0)" />
-        </linearGradient>
-        {/* Filet de but — texture */}
-        <pattern id="netPat" width="6" height="6" patternUnits="userSpaceOnUse">
-          <path d="M0 0 L6 6 M6 0 L0 6" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8"/>
-        </pattern>
-        <filter id="fieldBlur">
-          <feGaussianBlur stdDeviation="0.4"/>
-        </filter>
-      </defs>
+    <div style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",overflow:"hidden"}}>
+      <svg width="100%" height="100%" viewBox="0 0 400 860" preserveAspectRatio="xMidYMin slice">
+        <defs>
+          <linearGradient id="lockerBg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1a1a2e"/>
+            <stop offset="40%" stopColor="#16213e"/>
+            <stop offset="100%" stopColor="#0f3460"/>
+          </linearGradient>
+          <linearGradient id="benchGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#8B6914"/>
+            <stop offset="100%" stopColor="#5c4510"/>
+          </linearGradient>
+          <linearGradient id="lockerGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#2a2a3e"/>
+            <stop offset="50%" stopColor="#323250"/>
+            <stop offset="100%" stopColor="#2a2a3e"/>
+          </linearGradient>
+          <linearGradient id="lightBeam" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(255,200,50,0.3)"/>
+            <stop offset="100%" stopColor="rgba(255,200,50,0)"/>
+          </linearGradient>
+          <radialGradient id="spotlight1" cx="25%" cy="0%" r="60%">
+            <stop offset="0%" stopColor="rgba(255,220,100,0.15)"/>
+            <stop offset="100%" stopColor="rgba(0,0,0,0)"/>
+          </radialGradient>
+          <radialGradient id="spotlight2" cx="75%" cy="0%" r="60%">
+            <stop offset="0%" stopColor="rgba(255,220,100,0.12)"/>
+            <stop offset="100%" stopColor="rgba(0,0,0,0)"/>
+          </radialGradient>
+          <filter id="shadow"><feDropShadow dx="2" dy="4" stdDeviation="3" floodOpacity="0.4"/></filter>
+        </defs>
 
-      {/* ── FOND PELOUSE ── */}
-      <rect width="400" height="860" fill="url(#pitchGrad)" />
+        {/* Fond mur vestiaire */}
+        <rect width="400" height="860" fill="url(#lockerBg)"/>
 
-      {/* Bandes de tonte — 8 bandes verticales alternées */}
-      {[0,1,2,3,4,5,6,7].map(i => (
-        <rect key={i} x={i*50} y="0" width="50" height="860"
-          fill={i%2===0 ? "rgba(255,255,255,0.032)" : "rgba(0,0,0,0.025)"} />
-      ))}
+        {/* Spotlights au plafond */}
+        <rect width="400" height="860" fill="url(#spotlight1)"/>
+        <rect width="400" height="860" fill="url(#spotlight2)"/>
 
-      {/* Ombres de perspective pour effet 3D */}
-      <rect width="400" height="860" fill="url(#shadowL)" />
-      <rect width="400" height="860" fill="url(#shadowR)" />
-      <rect width="400" height="860" fill="url(#shadowB)" />
-      <rect width="400" height="860" fill="url(#lightTop)" />
+        {/* Plafond avec structure */}
+        <rect x="0" y="0" width="400" height="35" fill="#111122"/>
+        {/* Rails de lumière au plafond */}
+        {[60,140,220,300,370].map((x,i)=>(
+          <g key={i}>
+            <rect x={x-4} y="8" width="8" height="20" fill="#444" rx="2"/>
+            <ellipse cx={x} cy="28" rx="6" ry="4" fill="#ffe066" opacity="0.9"/>
+            <rect x={x-1} y="28" width="2" height="40" fill="url(#lightBeam)" opacity="0.6"/>
+          </g>
+        ))}
 
-      {/* ══ LIGNES DU TERRAIN ══ */}
-      {/* Bordure extérieure complète */}
-      <rect x="22" y="18" width="356" height="824" fill="none"
-        stroke="rgba(255,255,255,0.75)" strokeWidth="2.5" />
+        {/* Sol carrelé */}
+        <rect x="0" y="760" width="400" height="100" fill="#1a1a1a"/>
+        {[0,1,2,3,4,5,6,7].map(i=>(
+          <line key={i} x1={i*57} y1="760" x2={i*57} y2="860" stroke="#222" strokeWidth="1"/>
+        ))}
+        {[760,790,820,850].map((y,i)=>(
+          <line key={i} x1="0" y1={y} x2="400" y2={y} stroke="#222" strokeWidth="1"/>
+        ))}
+        <rect x="0" y="758" width="400" height="4" fill="#333"/>
 
-      {/* ── MOITIÉ HAUTE ── */}
-      {/* Surface de réparation grande */}
-      <rect x="88" y="18" width="224" height="110" fill="none"
-        stroke="rgba(255,255,255,0.7)" strokeWidth="2" />
-      {/* Petite surface */}
-      <rect x="142" y="18" width="116" height="45" fill="none"
-        stroke="rgba(255,255,255,0.7)" strokeWidth="2" />
-      {/* Arc de cercle surface */}
-      <path d="M 142 128 A 56 56 0 0 0 258 128"
-        fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2" />
-      {/* But haut — structure 3D */}
-      <rect x="162" y="8" width="76" height="18" fill="none"
-        stroke="rgba(255,255,255,0.6)" strokeWidth="1.8" />
-      {/* Filet but haut */}
-      <rect x="162" y="8" width="76" height="18" fill="url(#netPat)" />
-      {/* Poteaux 3D haut — gauche */}
-      <rect x="162" y="6" width="3" height="22" fill="rgba(255,255,255,0.85)" rx="1"/>
-      <ellipse cx="163.5" cy="6" rx="1.5" ry="0.8" fill="rgba(255,255,255,0.5)"/>
-      {/* Poteaux 3D haut — droite */}
-      <rect x="235" y="6" width="3" height="22" fill="rgba(255,255,255,0.85)" rx="1"/>
-      <ellipse cx="236.5" cy="6" rx="1.5" ry="0.8" fill="rgba(255,255,255,0.5)"/>
-      {/* Barre transversale haut */}
-      <rect x="162" y="6" width="76" height="2.5" fill="rgba(255,255,255,0.9)" rx="1"/>
-      {/* Coin de surface haut-gauche (quart de cercle) */}
-      <path d="M22 38 Q38 38 38 54" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2"/>
-      {/* Coin de surface haut-droite */}
-      <path d="M378 38 Q362 38 362 54" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2"/>
-      {/* Point de penalty haut */}
-      <circle cx="200" cy="88" r="3.5" fill="rgba(255,255,255,0.7)" />
+        {/* Rangée de casiers gauche — perspective 3D */}
+        {[0,1,2,3,4,5].map(i=>(
+          <g key={i}>
+            {/* Corps casier */}
+            <rect x={8+i*56} y="120" width="48" height="200" fill="url(#lockerGrad)" rx="2" filter="url(#shadow)"/>
+            {/* Façade casier avec effet 3D */}
+            <rect x={10+i*56} y="122" width="44" height="196" fill="#2d2d45" rx="1"/>
+            {/* Poignée */}
+            <rect x={30+i*56} y="210" width="4" height="12" fill="#888" rx="2"/>
+            {/* Fente ventilation */}
+            {[140,150,160,170,180,190,200].map((y,j)=>(
+              <line key={j} x1={13+i*56} y1={y} x2={51+i*56} y2={y} stroke="#222" strokeWidth="0.8" opacity="0.5"/>
+            ))}
+            {/* Numéro casier */}
+            <text x={32+i*56} y="145" textAnchor="middle" fontSize="11" fill="#aaa" fontFamily="monospace">{i+1}</text>
+            {/* Porte casier entrouverte sur certains */}
+            {i===1||i===4 ? (
+              <rect x={10+i*56} y="122" width="8" height="196" fill="#252540" rx="1" transform={`skewY(-2)`}/>
+            ) : null}
+          </g>
+        ))}
 
-      {/* ── LIGNE MÉDIANE ── */}
-      <line x1="22" y1="430" x2="378" y2="430"
-        stroke="rgba(255,255,255,0.75)" strokeWidth="2.5" />
-      {/* Rond central — ellipse légèrement aplatie pour effet 3D */}
-      <ellipse cx="200" cy="430" rx="72" ry="68"
-        fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.2" />
-      {/* Point central */}
-      <circle cx="200" cy="430" r="4" fill="rgba(255,255,255,0.75)" />
-      {/* Demi-cercle médiane — haut */}
-      <path d="M200 362 A 68 68 0 0 1 200 362" fill="none"/>
+        {/* Rangée de casiers droite */}
+        {[0,1,2,3,4,5].map(i=>(
+          <g key={i}>
+            <rect x={8+i*56} y="350" width="48" height="200" fill="url(#lockerGrad)" rx="2" filter="url(#shadow)"/>
+            <rect x={10+i*56} y="352" width="44" height="196" fill="#2d2d45" rx="1"/>
+            <rect x={30+i*56} y="440" width="4" height="12" fill="#888" rx="2"/>
+            {[370,380,390,400,410,420,430].map((y,j)=>(
+              <line key={j} x1={13+i*56} y1={y} x2={51+i*56} y2={y} stroke="#222" strokeWidth="0.8" opacity="0.5"/>
+            ))}
+            <text x={32+i*56} y="375" textAnchor="middle" fontSize="11" fill="#aaa" fontFamily="monospace">{i+7}</text>
+            {i===2||i===5 ? (
+              <rect x={10+i*56} y="352" width="8" height="196" fill="#252540" rx="1"/>
+            ) : null}
+          </g>
+        ))}
 
-      {/* ── MOITIÉ BASSE ── */}
-      {/* Surface de réparation grande basse */}
-      <rect x="88" y="732" width="224" height="110" fill="none"
-        stroke="rgba(255,255,255,0.65)" strokeWidth="2" />
-      {/* Petite surface basse */}
-      <rect x="142" y="797" width="116" height="45" fill="none"
-        stroke="rgba(255,255,255,0.65)" strokeWidth="2" />
-      {/* Arc de cercle surface basse */}
-      <path d="M 142 732 A 56 56 0 0 1 258 732"
-        fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="2" />
-      {/* But bas — structure 3D */}
-      <rect x="162" y="834" width="76" height="20" fill="none"
-        stroke="rgba(255,255,255,0.55)" strokeWidth="1.8" />
-      {/* Filet but bas */}
-      <rect x="162" y="834" width="76" height="20" fill="url(#netPat)" />
-      {/* Poteaux 3D bas */}
-      <rect x="162" y="832" width="3" height="24" fill="rgba(255,255,255,0.8)" rx="1"/>
-      <rect x="235" y="832" width="3" height="24" fill="rgba(255,255,255,0.8)" rx="1"/>
-      <rect x="162" y="853" width="76" height="2.5" fill="rgba(255,255,255,0.85)" rx="1"/>
-      {/* Point de penalty bas */}
-      <circle cx="200" cy="772" r="3.5" fill="rgba(255,255,255,0.65)" />
-      {/* Coins bas */}
-      <path d="M22 822 Q38 822 38 806" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2"/>
-      <path d="M378 822 Q362 822 362 806" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2"/>
+        {/* Banc vestiaire en bois — perspective 3D */}
+        <rect x="5" y="320" width="390" height="25" fill="url(#benchGrad)" rx="3" filter="url(#shadow)"/>
+        <rect x="5" y="343" width="390" height="4" fill="#4a3008" rx="1"/>
+        {/* Lattes du banc */}
+        {[0,1,2,3,4,5,6,7].map(i=>(
+          <line key={i} x1={5+i*50} y1="320" x2={5+i*50} y2="345" stroke="#3a2506" strokeWidth="1" opacity="0.6"/>
+        ))}
+        {/* Pieds du banc */}
+        {[30,130,230,330].map((x,i)=>(
+          <g key={i}>
+            <rect x={x} y="345" width="8" height="30" fill="#3a3a3a" rx="1"/>
+            <rect x={x-4} y="373" width="16" height="4" fill="#2a2a2a" rx="1"/>
+          </g>
+        ))}
 
-      {/* Reflet lumineux central doux */}
-      <ellipse cx="200" cy="430" rx="180" ry="90"
-        fill="rgba(255,255,255,0.018)" />
-    </svg>
+        {/* Banc bas */}
+        <rect x="5" y="555" width="390" height="25" fill="url(#benchGrad)" rx="3" filter="url(#shadow)"/>
+        <rect x="5" y="578" width="390" height="4" fill="#4a3008" rx="1"/>
+        {[0,1,2,3,4,5,6,7].map(i=>(
+          <line key={i} x1={5+i*50} y1="555" x2={5+i*50} y2="580" stroke="#3a2506" strokeWidth="1" opacity="0.6"/>
+        ))}
+        {[30,130,230,330].map((x,i)=>(
+          <g key={i}>
+            <rect x={x} y="580" width="8" height="30" fill="#3a3a3a" rx="1"/>
+            <rect x={x-4} y="608" width="16" height="4" fill="#2a2a2a" rx="1"/>
+          </g>
+        ))}
+
+        {/* Tableau tactique sur le mur du fond */}
+        <rect x="120" y="40" width="160" height="70" fill="#1a472a" rx="3" filter="url(#shadow)"/>
+        <rect x="122" y="42" width="156" height="66" fill="#155724" rx="2"/>
+        {/* Lignes tactiques sur le tableau */}
+        <line x1="200" y1="48" x2="200" y2="102" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8"/>
+        <line x1="130" y1="75" x2="270" y2="75" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8"/>
+        <circle cx="200" cy="75" r="15" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8"/>
+        {/* Pions tactiques */}
+        {[[145,55],[165,55],[200,55],[235,55],[255,55]].map(([x,y],i)=>(
+          <circle key={i} cx={x} cy={y} r="4" fill="#e53935" opacity="0.8"/>
+        ))}
+        {[[155,95],[185,95],[215,95],[245,95]].map(([x,y],i)=>(
+          <circle key={i} cx={x} cy={y} r="4" fill="#1565c0" opacity="0.8"/>
+        ))}
+
+        {/* Maillots accrochés */}
+        {[45,140,255,350].map((x,i)=>(
+          <g key={i} opacity="0.7">
+            <path d={`M${x} 630 L${x-12} 650 L${x-10} 720 L${x+10} 720 L${x+12} 650 Z`}
+              fill={i%2===0?"#c62828":"#1565c0"} stroke="rgba(255,255,255,0.1)" strokeWidth="0.5"/>
+            <path d={`M${x-12} 650 L${x-22} 660 L${x-18} 670 L${x-10} 660 Z`}
+              fill={i%2===0?"#b71c1c":"#0d47a1"}/>
+            <path d={`M${x+12} 650 L${x+22} 660 L${x+18} 670 L${x+10} 660 Z`}
+              fill={i%2===0?"#b71c1c":"#0d47a1"}/>
+            <text x={x} y="685" textAnchor="middle" fontSize="8" fill="rgba(255,255,255,0.6)" fontFamily="monospace">{[7,10,9,11][i]}</text>
+          </g>
+        ))}
+
+        {/* Ambiance sombre globale */}
+        <rect width="400" height="860" fill="rgba(0,0,10,0.45)"/>
+      </svg>
+    </div>
   );
 }
 
-// Court en terre battue — vue 3D perspective légère
 function ClayCourtBackground() {
   return (
-    <svg width="100%" height="100%" viewBox="0 0 400 860" preserveAspectRatio="xMidYMin slice"
-      style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none"}}>
-      <defs>
-        {/* Dégradé terre battue — lumière zénithale */}
-        <linearGradient id="clayGrad" x1="0.2" y1="0" x2="0.8" y2="1">
-          <stop offset="0%"   stopColor="#b85a35" />
-          <stop offset="35%"  stopColor="#c96a45" />
-          <stop offset="65%"  stopColor="#c06040" />
-          <stop offset="100%" stopColor="#9a4828" />
-        </linearGradient>
-        {/* Texture balayage — stries horizontales fines */}
-        <pattern id="clayLines" width="400" height="4" patternUnits="userSpaceOnUse">
-          <rect width="400" height="4" fill="transparent"/>
-          <line x1="0" y1="3" x2="400" y2="3" stroke="rgba(0,0,0,0.06)" strokeWidth="0.8"/>
-        </pattern>
-        {/* Ombre perspective */}
-        <linearGradient id="clayShadowL" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%"  stopColor="rgba(0,0,0,0.3)" />
-          <stop offset="15%" stopColor="rgba(0,0,0,0)" />
-        </linearGradient>
-        <linearGradient id="clayShadowR" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="85%" stopColor="rgba(0,0,0,0)" />
-          <stop offset="100%" stopColor="rgba(0,0,0,0.3)" />
-        </linearGradient>
-        <linearGradient id="clayShadowB" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="70%" stopColor="rgba(0,0,0,0)" />
-          <stop offset="100%" stopColor="rgba(0,0,0,0.35)" />
-        </linearGradient>
-        <linearGradient id="clayLightT" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"  stopColor="rgba(255,230,200,0.12)" />
-          <stop offset="20%" stopColor="rgba(255,230,200,0)" />
-        </linearGradient>
-        {/* Reflet centre court */}
-        <radialGradient id="clayCenter" cx="50%" cy="48%" r="40%">
-          <stop offset="0%"  stopColor="rgba(255,200,160,0.07)" />
-          <stop offset="100%" stopColor="rgba(255,200,160,0)" />
-        </radialGradient>
-        {/* Texture grain terre battue */}
-        <filter id="grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
-          <feColorMatrix type="saturate" values="0"/>
-          <feBlend in="SourceGraphic" mode="overlay" result="blend"/>
-          <feComposite in="blend" in2="SourceGraphic" operator="in"/>
-        </filter>
-      </defs>
+    <div style={{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",overflow:"hidden"}}>
+      <svg width="100%" height="100%" viewBox="0 0 400 860" preserveAspectRatio="xMidYMin slice">
+        <defs>
+          <linearGradient id="stadiumBg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1a0a00"/>
+            <stop offset="30%" stopColor="#2d1500"/>
+            <stop offset="100%" stopColor="#1a0800"/>
+          </linearGradient>
+          <linearGradient id="standGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3d1a00"/>
+            <stop offset="100%" stopColor="#2a1000"/>
+          </linearGradient>
+          <linearGradient id="courtSurface" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#c0622a"/>
+            <stop offset="50%" stopColor="#d4713a"/>
+            <stop offset="100%" stopColor="#b85525"/>
+          </linearGradient>
+          <radialGradient id="courtLight" cx="50%" cy="40%" r="55%">
+            <stop offset="0%" stopColor="rgba(255,200,150,0.2)"/>
+            <stop offset="100%" stopColor="rgba(0,0,0,0)"/>
+          </radialGradient>
+          <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <filter id="shadow2"><feDropShadow dx="0" dy="3" stdDeviation="4" floodOpacity="0.5"/></filter>
+        </defs>
 
-      {/* ── FOND TERRE BATTUE ── */}
-      <rect width="400" height="860" fill="url(#clayGrad)" />
-      <rect width="400" height="860" fill="url(#clayLines)" />
-      {/* Ombres 3D */}
-      <rect width="400" height="860" fill="url(#clayShadowL)" />
-      <rect width="400" height="860" fill="url(#clayShadowR)" />
-      <rect width="400" height="860" fill="url(#clayShadowB)" />
-      <rect width="400" height="860" fill="url(#clayLightT)" />
-      <rect width="400" height="860" fill="url(#clayCenter)" />
+        {/* Fond stade */}
+        <rect width="400" height="860" fill="url(#stadiumBg)"/>
 
-      {/* ══ COURT COMPLET ══ */}
-      {/* Couloir extérieur (doubles) */}
-      <rect x="24" y="30" width="352" height="800"
-        fill="rgba(180,80,40,0.18)" stroke="rgba(255,255,255,0.65)" strokeWidth="2.5" />
+        {/* Tribunes haut — gradins en perspective */}
+        {[0,1,2,3,4,5,6,7,8].map(i=>(
+          <g key={i}>
+            <rect x="0" y={i*14} width="400" height="13" fill={i%2===0?"#2a1200":"#321500"} opacity={0.7+i*0.03}/>
+            {/* Sièges — rangées de points colorés */}
+            {Array.from({length:28}).map((_,j)=>(
+              <rect key={j} x={j*14+3} y={i*14+3} width="10" height="8" rx="2"
+                fill={Math.random()>0.3?["#8B0000","#006400","#00008B","#4a4a00","#444"][Math.floor(Math.random()*5)]:"#2a2a2a"}
+                opacity="0.8"/>
+            ))}
+          </g>
+        ))}
 
-      {/* Court de simple (lignes intérieures) */}
-      <rect x="60" y="30" width="280" height="800"
-        fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2" />
+        {/* Tribune droite — gradins latéraux */}
+        {[0,1,2,3,4].map(i=>(
+          <g key={i}>
+            <rect x={340+i*12} y="120" width="11" height="400" fill={i%2===0?"#2a1200":"#321500"}/>
+            {Array.from({length:18}).map((_,j)=>(
+              <rect key={j} x={341+i*12} y={130+j*22} width="9" height="16" rx="2"
+                fill={["#8B0000","#2a2a2a","#006400","#444"][Math.floor(Math.random()*4)]}
+                opacity="0.8"/>
+            ))}
+          </g>
+        ))}
 
-      {/* ── DEMI-TERRAIN HAUT ── */}
-      {/* Ligne de service haute */}
-      <line x1="60" y1="220" x2="340" y2="220"
-        stroke="rgba(255,255,255,0.72)" strokeWidth="2" />
-      {/* Ligne centrale (T) haute */}
-      <line x1="200" y1="30" x2="200" y2="220"
-        stroke="rgba(255,255,255,0.65)" strokeWidth="2" />
-      {/* Cases de service */}
-      <rect x="60" y="30" width="140" height="190"
-        fill="rgba(0,0,0,0.04)" />
-      <rect x="200" y="30" width="140" height="190"
-        fill="rgba(255,255,255,0.025)" />
+        {/* Tribune gauche */}
+        {[0,1,2,3,4].map(i=>(
+          <g key={i}>
+            <rect x={i*12} y="120" width="11" height="400" fill={i%2===0?"#2a1200":"#321500"}/>
+            {Array.from({length:18}).map((_,j)=>(
+              <rect key={j} x={i*12+1} y={130+j*22} width="9" height="16" rx="2"
+                fill={["#8B0000","#2a2a2a","#006400","#444"][Math.floor(Math.random()*4)]}
+                opacity="0.8"/>
+            ))}
+          </g>
+        ))}
 
-      {/* ── DEMI-TERRAIN BAS ── */}
-      {/* Ligne de service basse */}
-      <line x1="60" y1="640" x2="340" y2="640"
-        stroke="rgba(255,255,255,0.72)" strokeWidth="2" />
-      {/* Ligne centrale (T) basse */}
-      <line x1="200" y1="640" x2="200" y2="830"
-        stroke="rgba(255,255,255,0.65)" strokeWidth="2" />
-      {/* Cases de service basses */}
-      <rect x="60" y="640" width="140" height="190"
-        fill="rgba(255,255,255,0.025)" />
-      <rect x="200" y="640" width="140" height="190"
-        fill="rgba(0,0,0,0.04)" />
+        {/* Surface terre battue */}
+        <rect x="58" y="120" width="284" height="540" fill="url(#courtSurface)" rx="2"/>
+        <rect width="400" height="860" fill="url(#courtLight)"/>
 
-      {/* ── FILET 3D ── */}
-      {/* Poteau gauche */}
-      <rect x="22" y="416" width="5" height="28"
-        fill="rgba(255,255,255,0.9)" rx="1.5" />
-      <ellipse cx="24.5" cy="416" rx="2.5" ry="1.5"
-        fill="rgba(255,255,255,0.6)" />
-      {/* Poteau droit */}
-      <rect x="373" y="416" width="5" height="28"
-        fill="rgba(255,255,255,0.9)" rx="1.5" />
-      <ellipse cx="375.5" cy="416" rx="2.5" ry="1.5"
-        fill="rgba(255,255,255,0.6)" />
-      {/* Câble du filet — légèrement courbé pour le réalisme */}
-      <path d="M24 417 Q200 412 376 417"
-        fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" />
-      {/* Corps du filet — mailles */}
-      {[0,1,2,3,4,5,6,7,8,9,10,11,12].map(i => (
-        <line key={i}
-          x1={24 + i*28} y1="417"
-          x2={24 + i*28} y2="444"
-          stroke="rgba(255,255,255,0.25)" strokeWidth="0.8"/>
-      ))}
-      {[0,1,2,3].map(i => (
-        <line key={i}
-          x1="24" y1={420 + i*8}
-          x2="376" y2={420 + i*8}
-          stroke="rgba(255,255,255,0.2)" strokeWidth="0.6"/>
-      ))}
-      {/* Bas du filet */}
-      <line x1="24" y1="444" x2="376" y2="444"
-        stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
+        {/* Lignes du court */}
+        <rect x="62" y="124" width="276" height="532" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2.5"/>
+        <line x1="62" y1="390" x2="338" y2="390" stroke="rgba(255,255,255,0.85)" strokeWidth="2.5"/>
+        <rect x="100" y="124" width="200" height="266" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"/>
+        <rect x="100" y="390" width="200" height="266" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"/>
+        <line x1="200" y1="124" x2="200" y2="390" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"/>
+        <line x1="200" y1="390" x2="200" y2="656" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"/>
+        <line x1="193" y1="122" x2="207" y2="122" stroke="rgba(255,255,255,0.8)" strokeWidth="2"/>
+        <line x1="193" y1="658" x2="207" y2="658" stroke="rgba(255,255,255,0.8)" strokeWidth="2"/>
 
-      {/* ── MARQUES DE FOND DE COURT ── */}
-      {/* Lignes de fond haut — épaississement 3D */}
-      <line x1="24" y1="30" x2="376" y2="30"
-        stroke="rgba(255,255,255,0.75)" strokeWidth="3" />
-      <line x1="24" y1="830" x2="376" y2="830"
-        stroke="rgba(255,255,255,0.7)" strokeWidth="3" />
+        {/* Filet */}
+        <rect x="56" y="385" width="8" height="12" fill="#aaa" rx="2"/>
+        <rect x="336" y="385" width="8" height="12" fill="#aaa" rx="2"/>
+        <line x1="60" y1="388" x2="344" y2="388" stroke="rgba(255,255,255,0.9)" strokeWidth="3"/>
+        {Array.from({length:25}).map((_,i)=>(
+          <line key={i} x1={60+i*11.4} y1="388" x2={60+i*11.4} y2="397" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8"/>
+        ))}
+        <line x1="60" y1="397" x2="344" y2="397" stroke="rgba(255,255,255,0.4)" strokeWidth="1"/>
 
-      {/* Marques de centre haut et bas */}
-      <line x1="197" y1="27" x2="203" y2="27"
-        stroke="rgba(255,255,255,0.8)" strokeWidth="2.5"/>
-      <line x1="197" y1="833" x2="203" y2="833"
-        stroke="rgba(255,255,255,0.7)" strokeWidth="2.5"/>
+        {/* Chaise arbitre */}
+        <g transform="translate(348, 360)">
+          {/* Pied */}
+          <rect x="4" y="20" width="6" height="40" fill="#5c4510"/>
+          <rect x="0" y="55" width="14" height="5" fill="#3a2a08" rx="1"/>
+          {/* Siège */}
+          <rect x="-2" y="10" width="18" height="12" fill="#8B6914" rx="2"/>
+          {/* Dossier */}
+          <rect x="0" y="-10" width="14" height="22" fill="#7a5c10" rx="2"/>
+          {/* Garde-corps */}
+          <rect x="-4" y="5" width="3" height="20" fill="#5c4510" rx="1"/>
+          <rect x="15" y="5" width="3" height="20" fill="#5c4510" rx="1"/>
+          {/* Arbitre assis */}
+          <ellipse cx="7" cy="2" rx="6" ry="7" fill="#d4a96a"/>
+          <rect x="2" y="8" width="10" height="14" fill="#1a1a2e" rx="2"/>
+        </g>
 
-      {/* Reflet lumineux doux au centre */}
-      <ellipse cx="200" cy="430" rx="120" ry="60"
-        fill="rgba(255,220,180,0.04)" />
-    </svg>
+        {/* Pylônes d'éclairage */}
+        {[[55,110],[345,110],[55,560],[345,560]].map(([x,y],i)=>(
+          <g key={i}>
+            <rect x={x-2} y={y} width="4" height="60" fill="#555"/>
+            <rect x={x-8} y={y-5} width="20" height="8" fill="#666" rx="1"/>
+            {[0,1,2].map(j=>(
+              <ellipse key={j} cx={x-4+j*4} cy={y-2} rx="2.5" ry="1.5" fill="#ffe066" opacity="0.9"/>
+            ))}
+          </g>
+        ))}
+
+        {/* Stries texture terre battue */}
+        {Array.from({length:30}).map((_,i)=>(
+          <line key={i} x1="58" y1={124+i*17.7} x2="342" y2={124+i*17.7}
+            stroke="rgba(0,0,0,0.06)" strokeWidth="0.8"/>
+        ))}
+
+        {/* Panneaux publicitaires au bord du court */}
+        {[[62,660,80,16],[200,660,80,16],[62,104,80,16],[200,104,80,16]].map(([x,y,w,h],i)=>(
+          <rect key={i} x={x} y={y} width={w} height={h}
+            fill={["#c62828","#1565c0","#2e7d32","#f57f17"][i]} opacity="0.7" rx="2"/>
+        ))}
+
+        {/* Ombre globale pour profondeur */}
+        <rect width="400" height="860" fill="rgba(0,0,0,0.3)"/>
+      </svg>
+    </div>
   );
 }
 
+// ─── ANIMATIONS GLOBALES ───────────────────────────────────────────
 
-
+// ─── THÈMES PAR SPORT ──────────────────────────────────────────────
+// Football : pelouse stylisée, vert profond / blanc craie
+// Tennis : terre battue, ocre/terracotta / blanc craie
 // ─── LOGO BETTRUST ────────────────────────────────────────────────
 // Monogramme BT avec check vert — déclinaisons : dark / light / white
 function BetTrustLogo({ size = 40, variant = "dark" }) {
@@ -1695,181 +1817,235 @@ function AnalysisPanel({ match, onClose }) {
   const renderAnalysis = (text) => {
     if (!text) return null;
 
-    // Nettoyage agressif de tout le markdown
-    const cleanMd = (s) => s
+    // Nettoyage radical de tout le markdown
+    const clean = (s) => s
       .replace(/\*\*\*([^*]+)\*\*\*/g, '$1')
       .replace(/\*\*([^*]+)\*\*/g, '$1')
       .replace(/\*([^*]+)\*/g, '$1')
       .replace(/~~([^~]+)~~/g, '$1')
       .replace(/[`]/g, '')
-      .replace(/#{1,4}\s*/g, '')
-      .replace(/^[-•*]\s+/gm, '')
+      .replace(/#{1,6}\s*/g, '')
+      .replace(/^[-•*→]\s+/gm, '')
       .replace(/^\d+\.\s+/gm, '')
       .replace(/\|/g, ' ')
+      .replace(/---/g, '')
       .trim();
 
-    // Nettoie TOUT le texte d'abord
-    const cleanedText = text.split('\n').map(cleanMd).join('\n');
+    const lines = text.split('\n').map(l => clean(l)).filter(l => l.length > 0);
 
-    // Détecte les sections clés
-    const isVerdict = (l) => l.startsWith('⚡');
-    const isConfiance = (l) => l.startsWith('🎯 CONFIANCE') || l.match(/^confiance\s*:/i);
-    const isSignal = (l) => l.startsWith('🔍') || l.includes('VALUE BET') || l.includes('PIÈGE') || l.includes('Cote juste');
-    const isBest = (l) => l.startsWith('🏆') || l.startsWith('💰 LE MEILLEUR') || l.includes('MEILLEUR PARI');
-    const isWarning = (l) => l.startsWith('⚠️');
-    const isBetsTitle = (l) => l.startsWith('🎯 TOUS') || l.includes('PARIS RECOMMANDÉS');
-    const isBetItem = (l) => l.startsWith('→') || (l.match(/^[A-Z]/) && l.includes('@') && l.includes('—'));
-    const isSectionTitle = (l) => l.startsWith('📊') || l.startsWith('📋') || l.startsWith('👥') || l.startsWith('⚽');
+    // Détecteurs de sections
+    const isVerdict = l => l.startsWith('⚡');
+    const isConfiance = l => l.match(/^🎯 CONFIANCE/i) || l.match(/^confiance\s*:/i);
+    const isSignal = l => l.startsWith('🔍') || l.includes('VALUE BET') || l.includes('value bet') || l.includes('PIÈGE') || l.includes('piège');
+    const isAnalyse = l => l.startsWith('📊') || l.match(/^ANALYSE/i);
+    const isMarches = l => l.startsWith('🎯 MARCH') || l.match(/^MARCH.*DISPONIBLES/i) || l.match(/^TOUS LES PARIS/i);
+    const isBest = l => l.startsWith('🏆') || l.match(/^MA RECOMMANDATION FINALE/i) || l.match(/^LE MEILLEUR PARI/i);
+    const isWarning = l => l.startsWith('⚠️') || l.match(/^ATTENTION\s*:/i);
+    const isBetItem = l => l.startsWith('→') || (l.includes('@') && l.includes('—') && l.length > 20);
+    const isValueLine = l => l.includes('💎') || l.toUpperCase().includes('VALUE BET');
+    const isNoValue = l => l.toUpperCase().includes('PAS DE VALUE BET') || l.toUpperCase().includes('AUCUNE VALUE');
 
-    const lines = cleanedText.split('\n').filter(l => l.trim() && l.trim() !== '---');
     const elements = [];
     let i = 0;
+    let inAnalyse = false;
+    let inMarches = false;
+    let inBest = false;
+    let analyseLines = [];
+    let marchesItems = [];
+    let bestLines = [];
 
-    while (i < lines.length) {
-      const l = lines[i].trim();
-
-      if (isVerdict(l)) {
-        const text = l.replace(/^⚡\s*/, '').replace(/VERDICT\s*:\s*/i, '');
-        const isVal = text.toUpperCase().includes('VALUE') || text.toUpperCase().includes('COBOLLI') || text.toUpperCase().includes('OUTSIDER');
-        const isPieg = text.toUpperCase().includes('PIÈGE') || text.toUpperCase().includes('PIEGE') || text.toUpperCase().includes('FAVORIT');
-        const bg = isVal ? 'linear-gradient(135deg,#052e16,#166534)' : isPieg ? 'linear-gradient(135deg,#450a0a,#991b1b)' : 'linear-gradient(135deg,#0f172a,#1e293b)';
+    const flushAnalyse = () => {
+      if (analyseLines.length > 0) {
         elements.push(
-          <div key={i} style={{background:bg,borderRadius:16,padding:"18px 20px",marginBottom:12}} className="anim-scalein">
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.55)",fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>⚡ Verdict</div>
-            <div style={{fontSize:17,fontWeight:900,color:"#fff",lineHeight:1.4}}>{text}</div>
-          </div>
-        );
-
-      } else if (isConfiance(l)) {
-        const match = l.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
-        const score = match ? parseFloat(match[1]) : null;
-        const pct = score ? score * 10 : 0;
-        const col = pct >= 70 ? '#16a34a' : pct >= 50 ? '#ca8a04' : '#dc2626';
-        elements.push(
-          <div key={i} style={{background:"#fff",border:`1.5px solid ${C.border}`,borderRadius:14,padding:"14px 16px",marginBottom:10}} className="anim-fadeup">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:score?10:0}}>
-              <span style={{fontSize:12,fontWeight:700,color:C.gray,textTransform:"uppercase",letterSpacing:0.8}}>Confiance</span>
-              <span style={{fontSize:20,fontWeight:900,color:col}}>{score ? `${score}/10` : l.replace(/.*confiance\s*:\s*/i,'')}</span>
+          <div key={`analyse-${elements.length}`} style={{marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+              <div style={{width:3,height:16,background:"#16a34a",borderRadius:99,flexShrink:0}}/>
+              <span style={{fontSize:11,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:1.2}}>Analyse 360°</span>
             </div>
-            {score && <div style={{height:8,background:"#f1f5f9",borderRadius:99,overflow:"hidden"}}>
-              <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${col},${col}cc)`,borderRadius:99,transition:"width 1s ease"}}/>
-            </div>}
-          </div>
-        );
-
-      } else if (isSignal(l)) {
-        const isVal = l.includes('💎') || l.toUpperCase().includes('VALUE');
-        const isPieg = l.includes('🪤') || l.toUpperCase().includes('PIÈGE') || l.toUpperCase().includes('PIEGE');
-        const col = isVal ? '#16a34a' : isPieg ? '#dc2626' : '#ca8a04';
-        const bg = isVal ? '#f0fdf4' : isPieg ? '#fef2f2' : '#fffbeb';
-        const bord = isVal ? '#86efac' : isPieg ? '#fca5a5' : '#fde68a';
-        const icon = isVal ? '💎' : isPieg ? '🪤' : '⚖️';
-        const label = isVal ? 'Value bet détecté' : isPieg ? 'Piège identifié' : 'Cote juste';
-        const detail = l.replace(/^🔍.*?:\s*/,'').replace(/💎|🪤|⚖️/g,'').replace(/VALUE BET|PIÈGE|Cote juste/gi,'').trim();
-        elements.push(
-          <div key={i} style={{background:bg,border:`2px solid ${bord}`,borderRadius:14,padding:"14px 16px",marginBottom:12,display:"flex",gap:12,alignItems:"flex-start"}} className="anim-fadeup">
-            <span style={{fontSize:28,lineHeight:1,flexShrink:0}}>{icon}</span>
-            <div>
-              <div style={{fontSize:14,fontWeight:900,color:col,marginBottom:4}}>{label}</div>
-              {detail && <div style={{fontSize:12,color:col,opacity:0.85,lineHeight:1.6}}>{detail}</div>}
+            <div style={{background:"#f1f5f9",borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:8}}>
+              {analyseLines.map((l,j) => (
+                <div key={j} style={{fontSize:13.5,color:"#1e293b",lineHeight:1.75,fontFamily:"'Inter',system-ui,sans-serif",borderBottom:j<analyseLines.length-1?"1px solid rgba(0,0,0,0.06)":"none",paddingBottom:j<analyseLines.length-1?8:0}}>{l}</div>
+              ))}
             </div>
           </div>
         );
+        analyseLines = [];
+      }
+      inAnalyse = false;
+    };
 
-      } else if (isBest(l)) {
-        const title = l.replace(/^🏆\s*/,'').replace(/^💰\s*/,'').replace(/LE MEILLEUR PARI DU MATCH\s*:?\s*/i,'').trim();
-        const extras = [];
-        i++;
-        while (i < lines.length && !isVerdict(lines[i]) && !isSectionTitle(lines[i]) && !isWarning(lines[i]) && !isBetsTitle(lines[i])) {
-          if (lines[i].trim()) extras.push(lines[i].trim());
-          i++;
-        }
-        i--;
+    const flushMarches = () => {
+      if (marchesItems.length > 0) {
         elements.push(
-          <div key={`best-${i}`} style={{background:"linear-gradient(135deg,#052e16,#16a34a)",borderRadius:16,padding:"18px 20px",marginBottom:12,marginTop:4}} className="anim-scalein">
-            <div style={{fontSize:10,color:"#86efac",fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>🏆 Meilleur pari du match</div>
-            {title && <div style={{fontSize:15,color:"#fff",fontWeight:800,lineHeight:1.5,marginBottom:extras.length?10:0}}>{title}</div>}
-            {extras.map((e,j) => <div key={j} style={{fontSize:12,color:"#bbf7d0",lineHeight:1.6,marginTop:4}}>{e}</div>)}
-          </div>
-        );
-
-      } else if (isBetsTitle(l)) {
-        const items = [];
-        i++;
-        while (i < lines.length && (isBetItem(lines[i]) || (lines[i].trim() && !isVerdict(lines[i]) && !isBest(lines[i]) && !isWarning(lines[i]) && !isSectionTitle(lines[i])))) {
-          if (lines[i].trim()) items.push(lines[i].trim());
-          i++;
-        }
-        i--;
-        elements.push(
-          <div key={`bets-${i}`} style={{marginBottom:14}} className="anim-fadeup">
-            <div style={{fontSize:11,fontWeight:800,color:"#7c3aed",textTransform:"uppercase",letterSpacing:1,marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
-              <div style={{width:3,height:14,background:"#7c3aed",borderRadius:99}}/>
-              Tous les paris recommandés
+          <div key={`marches-${elements.length}`} style={{marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+              <div style={{width:3,height:16,background:"#7c3aed",borderRadius:99,flexShrink:0}}/>
+              <span style={{fontSize:11,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:1.2}}>Marchés analysés</span>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {items.map((item,j) => {
-                const confMatch = item.match(/(\d+)\/10/);
-                const conf = confMatch ? parseInt(confMatch[1]) : null;
-                const isGood = conf ? conf >= 7 : item.toUpperCase().includes('VALUE');
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {marchesItems.map((item,j) => {
+                const isFort = item.toLowerCase().includes('fort') || item.toLowerCase().includes('value');
+                const isFaible = item.toLowerCase().includes('faible');
+                const dotColor = isFort ? "#16a34a" : isFaible ? "#9ca3af" : "#f59e0b";
+                const bg = isFort ? "#f0fdf4" : isFaible ? "#f9fafb" : "#fffbeb";
+                const border = isFort ? "#86efac" : isFaible ? "#e5e7eb" : "#fde68a";
                 return (
-                  <div key={j} style={{background:isGood?"#f0fdf4":"#fff",border:`1.5px solid ${isGood?"#86efac":C.border}`,borderRadius:12,padding:"12px 14px"}}>
-                    <div style={{fontSize:13,color:isGood?"#166534":"#374151",fontWeight:600,lineHeight:1.6}}>{item.replace(/^→\s*/,'')}</div>
-                    {conf && <div style={{marginTop:6,height:4,background:"#e5e7eb",borderRadius:99,overflow:"hidden"}}>
-                      <div style={{height:"100%",width:`${conf*10}%`,background:isGood?"#16a34a":"#ca8a04",borderRadius:99}}/>
-                    </div>}
+                  <div key={j} style={{background:bg,border:`1.5px solid ${border}`,borderRadius:11,padding:"10px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:dotColor,marginTop:5,flexShrink:0}}/>
+                    <div style={{fontSize:13,color:"#1e293b",lineHeight:1.6,fontFamily:"'Inter',system-ui,sans-serif"}}>{item.replace(/^→\s*/,'')}</div>
                   </div>
                 );
               })}
             </div>
           </div>
         );
+        marchesItems = [];
+      }
+      inMarches = false;
+    };
 
-      } else if (isWarning(l)) {
-        const txt = l.replace(/^⚠️\s*/,'');
+    const flushBest = () => {
+      if (bestLines.length > 0) {
+        const hasValue = bestLines.some(l => isValueLine(l));
+        const hasNoValue = bestLines.some(l => isNoValue(l));
+        const bg = hasValue
+          ? "linear-gradient(135deg,#052e16,#16a34a)"
+          : hasNoValue
+            ? "linear-gradient(135deg,#1e293b,#334155)"
+            : "linear-gradient(135deg,#1e3a5f,#1d4ed8)";
+        const label = hasValue ? "💎 Value bet trouvée" : hasNoValue ? "⚖️ Pas de value bet" : "🏆 Recommandation finale";
+        const labelColor = hasValue ? "#86efac" : hasNoValue ? "#94a3b8" : "#93c5fd";
+
         elements.push(
-          <div key={i} style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:12,padding:"12px 14px",marginBottom:10,display:"flex",gap:10}} className="anim-fadeup">
-            <span style={{fontSize:18,flexShrink:0}}>⚠️</span>
-            <div style={{fontSize:13,color:"#92400e",lineHeight:1.6}}>{txt}</div>
+          <div key={`best-${elements.length}`} style={{background:bg,borderRadius:18,padding:"20px 22px",marginTop:8}} className="anim-scalein">
+            <div style={{fontSize:10,color:labelColor,fontWeight:800,textTransform:"uppercase",letterSpacing:1.5,marginBottom:12}}>{label}</div>
+            {bestLines.map((l,j) => {
+              const isMain = j === 0 || l.includes('@') || isValueLine(l) || isNoValue(l);
+              return (
+                <div key={j} style={{fontSize:isMain?15:12,color:isMain?"#fff":"rgba(255,255,255,0.75)",fontWeight:isMain?700:400,lineHeight:1.6,marginBottom:j<bestLines.length-1?6:0,fontFamily:"'Inter',system-ui,sans-serif"}}>
+                  {l}
+                </div>
+              );
+            })}
+          </div>
+        );
+        bestLines = [];
+      }
+      inBest = false;
+    };
+
+    while (i < lines.length) {
+      const l = lines[i];
+
+      if (isVerdict(l)) {
+        if (inAnalyse) flushAnalyse();
+        if (inMarches) flushMarches();
+        if (inBest) flushBest();
+        const txt = l.replace(/^⚡\s*VERDICT\s*:\s*/i,'').replace(/^⚡\s*/,'');
+        elements.push(
+          <div key={`verdict-${i}`} style={{background:"linear-gradient(135deg,#0f172a,#1e293b)",borderRadius:16,padding:"18px 20px",marginBottom:14}} className="anim-scalein">
+            <div style={{fontSize:10,color:"#64748b",fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:8}}>Verdict</div>
+            <div style={{fontSize:16,fontWeight:700,color:"#f1f5f9",lineHeight:1.5,fontFamily:"'Inter',system-ui,sans-serif"}}>{txt}</div>
           </div>
         );
 
-      } else if (isSectionTitle(l)) {
-        const title = l.replace(/^[📊📋👥⚽]\s*/,'').replace(/ANALYSE INSIDER\s*:?/i,'Analyse insider').replace(/MARCHÉS?\s*AVEC\s*SIGNAL\s*:?/i,'Marchés avec signal');
-        const items = [];
-        i++;
-        while (i < lines.length && !isVerdict(lines[i]) && !isConfiance(lines[i]) && !isSignal(lines[i]) && !isBest(lines[i]) && !isWarning(lines[i]) && !isBetsTitle(lines[i]) && !isSectionTitle(lines[i])) {
-          if (lines[i].trim()) items.push(lines[i].trim());
-          i++;
-        }
-        i--;
+      } else if (isConfiance(l)) {
+        if (inAnalyse) flushAnalyse();
+        const m = l.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
+        const score = m ? parseFloat(m[1]) : null;
+        const pct = score ? score * 10 : 0;
+        const col = pct >= 70 ? '#16a34a' : pct >= 50 ? '#f59e0b' : '#ef4444';
         elements.push(
-          <div key={`sec-${i}`} style={{marginBottom:14}} className="anim-fadeup">
-            <div style={{fontSize:11,fontWeight:800,color:"#374151",textTransform:"uppercase",letterSpacing:0.8,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
-              <div style={{width:3,height:14,background:"#16a34a",borderRadius:99}}/>
-              {title}
+          <div key={`conf-${i}`} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"14px 18px",marginBottom:12}} className="anim-fadeup">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:score?10:0}}>
+              <span style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:0.8}}>Niveau de confiance</span>
+              <span style={{fontSize:22,fontWeight:900,color:col}}>{score ? `${score}/10` : l.replace(/.*confiance\s*:\s*/i,'')}</span>
             </div>
-            {items.length > 0 && (
-              <div style={{background:"#fff",borderRadius:12,border:`1px solid ${C.border}`,overflow:"hidden"}}>
-                {items.map((item,j) => (
-                  <div key={j} style={{padding:"10px 14px",borderBottom:j<items.length-1?`1px solid ${C.border}`:"none",fontSize:13,color:"#374151",lineHeight:1.65}}>{item}</div>
-                ))}
+            {score && (
+              <div style={{height:8,background:"#f1f5f9",borderRadius:99,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${col}aa,${col})`,borderRadius:99,transition:"width 1.2s ease"}}/>
               </div>
             )}
           </div>
         );
 
-      } else if (l.trim()) {
-        // Texte générique propre
+      } else if (isSignal(l)) {
+        if (inAnalyse) flushAnalyse();
+        const isVal = l.includes('💎') || l.toUpperCase().includes('VALUE BET');
+        const isPieg = l.includes('🪤') || l.toUpperCase().includes('PIÈGE');
+        const col = isVal ? '#16a34a' : isPieg ? '#ef4444' : '#f59e0b';
+        const bg = isVal ? '#f0fdf4' : isPieg ? '#fef2f2' : '#fffbeb';
+        const bord = isVal ? '#86efac' : isPieg ? '#fca5a5' : '#fde68a';
+        const icon = isVal ? '💎' : isPieg ? '🪤' : '⚖️';
+        const label = isVal ? 'Value bet identifiée' : isPieg ? 'Piège identifié' : 'Signal marché';
+        const detail = l.replace(/^🔍\s*/,'').replace(/^SIGNAL MARCHÉ\s*:\s*/i,'').replace(/💎|🪤|⚖️/g,'').replace(/VALUE BET|PIÈGE|Cote juste/gi,'').trim();
         elements.push(
-          <div key={i} style={{fontSize:13,color:"#4b5563",lineHeight:1.7,padding:"3px 0"}}>{l}</div>
+          <div key={`signal-${i}`} style={{background:bg,border:`2px solid ${bord}`,borderRadius:14,padding:"14px 16px",marginBottom:14,display:"flex",gap:12,alignItems:"flex-start"}} className="anim-fadeup">
+            <span style={{fontSize:26,lineHeight:1,flexShrink:0}}>{icon}</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:800,color:col,marginBottom:4}}>{label}</div>
+              {detail && <div style={{fontSize:12.5,color:col,opacity:0.8,lineHeight:1.6,fontFamily:"'Inter',system-ui,sans-serif"}}>{detail}</div>}
+            </div>
+          </div>
         );
+
+      } else if (isAnalyse(l)) {
+        if (inMarches) flushMarches();
+        if (inBest) flushBest();
+        inAnalyse = true;
+
+      } else if (isMarches(l)) {
+        if (inAnalyse) flushAnalyse();
+        if (inBest) flushBest();
+        inMarches = true;
+
+      } else if (isBest(l)) {
+        if (inAnalyse) flushAnalyse();
+        if (inMarches) flushMarches();
+        inBest = true;
+        const txt = l.replace(/^🏆\s*/,'').replace(/^MA RECOMMANDATION FINALE\s*:\s*/i,'').replace(/^LE MEILLEUR PARI DU MATCH\s*:\s*/i,'').trim();
+        if (txt) bestLines.push(txt);
+
+      } else if (isWarning(l)) {
+        if (inAnalyse) flushAnalyse();
+        if (inMarches) flushMarches();
+        if (inBest) flushBest();
+        const txt = l.replace(/^⚠️\s*/,'').replace(/^ATTENTION\s*:\s*/i,'').trim();
+        if (txt) elements.push(
+          <div key={`warn-${i}`} style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:12,padding:"12px 16px",marginTop:12,display:"flex",gap:10,alignItems:"flex-start"}}>
+            <span style={{fontSize:18,flexShrink:0}}>⚠️</span>
+            <div style={{fontSize:13,color:"#92400e",lineHeight:1.6,fontFamily:"'Inter',system-ui,sans-serif"}}>{txt}</div>
+          </div>
+        );
+
+      } else if (l) {
+        if (inBest) {
+          bestLines.push(l);
+        } else if (inMarches && (isBetItem(l) || (marchesItems.length > 0 && !isAnalyse(l) && !isBest(l) && !isWarning(l)))) {
+          marchesItems.push(l);
+        } else if (inMarches && marchesItems.length === 0 && l.includes('@')) {
+          marchesItems.push(l);
+        } else if (inAnalyse) {
+          analyseLines.push(l);
+        } else if (!inMarches) {
+          elements.push(
+            <div key={`text-${i}`} style={{fontSize:13.5,color:"#475569",lineHeight:1.75,marginBottom:4,fontFamily:"'Inter',system-ui,sans-serif"}}>{l}</div>
+          );
+        }
       }
 
       i++;
     }
 
-    return elements.length > 0 ? elements : <div style={{fontSize:13,color:"#4b5563",lineHeight:1.7}}>{cleanedText}</div>;
+    if (inAnalyse) flushAnalyse();
+    if (inMarches) flushMarches();
+    if (inBest) flushBest();
+
+    return elements.length > 0 ? elements : (
+      <div style={{fontSize:13.5,color:"#475569",lineHeight:1.75,fontFamily:"'Inter',system-ui,sans-serif"}}>
+        {lines.map((l,i) => <div key={i}>{l}</div>)}
+      </div>
+    );
   };
 
   const lines = renderAnalysis(analysis);
@@ -1904,35 +2080,7 @@ function AnalysisPanel({ match, onClose }) {
           )}
 
           {loading && (
-            <div style={{textAlign:"center",padding:"36px 0"}}>
-              <style>{`
-                @keyframes loupeSearch {
-                  0%   { transform: translate(0,0) rotate(0deg); }
-                  20%  { transform: translate(12px,-8px) rotate(15deg); }
-                  40%  { transform: translate(-8px,10px) rotate(-10deg); }
-                  60%  { transform: translate(10px,6px) rotate(20deg); }
-                  80%  { transform: translate(-6px,-10px) rotate(-5deg); }
-                  100% { transform: translate(0,0) rotate(0deg); }
-                }
-                @keyframes stepFade { 0%{opacity:0.3} 50%{opacity:1} 100%{opacity:0.3} }
-              `}</style>
-              <div style={{fontSize:52,marginBottom:20,display:"inline-block",animation:"loupeSearch 2.4s ease-in-out infinite"}}>🔍</div>
-              <div style={{fontSize:15,fontWeight:800,color:"#111827",marginBottom:16}}>Analyse en cours...</div>
-              <div style={{display:"flex",flexDirection:"column",gap:8,maxWidth:260,margin:"0 auto"}}>
-                {[
-                  {icon:"📊",text:"Déconstruction des cotes"},
-                  {icon:"🧬",text:"Analyse physique & mentale"},
-                  {icon:"🌦️",text:"Conditions & contexte"},
-                  {icon:"💎",text:"Détection value & pièges"},
-                  {icon:"🏆",text:"Décisions finales multi-marchés"},
-                ].map((s,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"#f9fafb",borderRadius:10,padding:"8px 14px",animation:`stepFade 2s ease-in-out ${i*0.4}s infinite`}}>
-                    <span style={{fontSize:16}}>{s.icon}</span>
-                    <span style={{fontSize:13,color:"#374151",fontWeight:500}}>{s.text}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <AnalysisLoadingAnimation sport={match.sport} />
           )}
 
           {analysis && !loading && (
@@ -2033,6 +2181,116 @@ function getSubStatus(sub) {
 
 // ─── NOTIFICATION DE RAPPEL (48h d'inactivité) ────────────────────
 // ─── PROMPT INSTALLATION PWA ───────────────────────────────────────
+
+// ─── ANIMATION DE CHARGEMENT ANALYSE ─────────────────────────────
+function AnalysisLoadingAnimation({ sport }) {
+  const [tick, setTick] = useState(0);
+  const isFootball = sport === "football";
+
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 50);
+    return () => clearInterval(t);
+  }, []);
+
+  const footballStats = [
+    ["xG domicile","1.87","#16a34a"],["xG extérieur","0.94","#dc2626"],
+    ["Possession moy.","61%","#2563eb"],["Tirs cadrés /match","4.2","#f59e0b"],
+    ["Forme récente","VVNVV","#16a34a"],["Corners /match","5.8","#7c3aed"],
+    ["Duels gagnés","52%","#0891b2"],["Clean sheets /5J","2","#16a34a"],
+    ["Pression haute","78%","#0891b2"],["Buts marqués /5J","8","#dc2626"],
+  ];
+  const tennisStats = [
+    ["% 1er service","68%","#16a34a"],["Aces /match","7.3","#7c3aed"],
+    ["Break pts conv.","42%","#16a34a"],["Doubles fautes","1.8","#dc2626"],
+    ["Jeux gagnés /match","23.4","#f59e0b"],["Winners /match","34","#16a34a"],
+    ["% pts gagnés srv1","74%","#2563eb"],["Vitesse service","196 km/h","#7c3aed"],
+    ["Matchs gagnés /5J","4/5","#16a34a"],["Sets perdus /5J","3","#dc2626"],
+  ];
+  const stats = isFootball ? footballStats : tennisStats;
+
+  // Position balle calculée par sinus/cosinus — pas de state séparé
+  const t = tick * 0.04;
+  const bx = 15 + 70 * Math.abs(Math.sin(t * 1.3));
+  const by = 10 + 75 * Math.abs(Math.sin(t * 0.9));
+
+  // Stats visibles : 6 stats qui tournent toutes les 2s
+  const offset = Math.floor(tick / 40) % stats.length;
+  const visible = [0,1,2,3,4,5].map(i => stats[(offset + i) % stats.length]);
+
+  return (
+    <div style={{padding:"16px 0 24px"}}>
+      <style>{`
+        @keyframes ballSpin2 { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes statIn { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:translateX(0)} }
+        @keyframes dotPulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
+      `}</style>
+
+      <div style={{textAlign:"center",marginBottom:12}}>
+        <div style={{fontSize:14,fontWeight:800,color:"#111827",marginBottom:3}}>Analyse en cours...</div>
+        <div style={{fontSize:12,color:"#6b7280"}}>L'IA scanne toutes les données disponibles</div>
+      </div>
+
+      {/* Mini terrain avec balle */}
+      <div style={{position:"relative",width:"100%",height:150,borderRadius:14,overflow:"hidden",marginBottom:14,background:isFootball?"#166534":"#c96a45"}}>
+        <svg width="100%" height="100%" viewBox="0 0 300 150" style={{position:"absolute",inset:0}}>
+          {isFootball ? <>
+            {[0,1,2,3,4].map(i=><rect key={i} x={i*60} y="0" width="60" height="150" fill={i%2===0?"rgba(255,255,255,0.03)":"rgba(0,0,0,0.04)"}/>)}
+            <rect x="10" y="8" width="280" height="134" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5"/>
+            <line x1="10" y1="75" x2="290" y2="75" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5"/>
+            <circle cx="150" cy="75" r="22" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.2"/>
+            <rect x="10" y="30" width="42" height="55" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1"/>
+            <rect x="248" y="30" width="42" height="55" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1"/>
+          </> : <>
+            {[0,1,2,3,4,5].map(i=><line key={i} x1="0" y1={i*25} x2="300" y2={i*25} stroke="rgba(0,0,0,0.05)" strokeWidth="0.8"/>)}
+            <rect x="15" y="10" width="270" height="130" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2"/>
+            <line x1="15" y1="75" x2="285" y2="75" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5"/>
+            <rect x="65" y="10" width="170" height="65" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.2"/>
+            <rect x="65" y="75" width="170" height="65" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.2"/>
+            <line x1="150" y1="10" x2="150" y2="75" stroke="rgba(255,255,255,0.4)" strokeWidth="1"/>
+            <line x1="150" y1="75" x2="150" y2="140" stroke="rgba(255,255,255,0.4)" strokeWidth="1"/>
+          </>}
+        </svg>
+
+        {/* Balle */}
+        <div style={{
+          position:"absolute",
+          left:`${bx}%`, top:`${by}%`,
+          transform:"translate(-50%,-50%)",
+          width:16, height:16, borderRadius:"50%",
+          background:"radial-gradient(circle at 35% 35%, #fff, #ccc)",
+          boxShadow:"0 2px 8px rgba(0,0,0,0.5)",
+          animation:"ballSpin2 0.6s linear infinite",
+        }}/>
+
+        <div style={{position:"absolute",bottom:6,left:0,right:0,textAlign:"center",fontSize:10,color:"rgba(255,255,255,0.6)",fontWeight:600,letterSpacing:1,textTransform:"uppercase",animation:"dotPulse 1.5s ease infinite"}}>
+          Scan en cours
+        </div>
+      </div>
+
+      {/* Stats défilantes */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:12}}>
+        {visible.map(([label, value, color], i) => (
+          <div key={`${offset}-${i}`} style={{background:"#fff",borderLeft:`3px solid ${color}`,borderRadius:10,padding:"7px 11px",animation:"statIn 0.3s ease both",animationDelay:`${i*0.05}s`}}>
+            <div style={{fontSize:10,color:"#6b7280",fontWeight:600,marginBottom:1}}>{label}</div>
+            <div style={{fontSize:15,fontWeight:900,color}}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Étapes */}
+      <div style={{display:"flex",flexDirection:"column",gap:5}}>
+        {["Résultats & statistiques récentes","Conditions météo & contexte","Analyse des cotes & marchés","Identification de la value bet"].map((step, i) => (
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8,animation:`dotPulse 2s ease ${i*0.4}s infinite`}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:"#16a34a",flexShrink:0}}/>
+            <span style={{fontSize:12,color:"#6b7280"}}>{step}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
 function PWAInstallPrompt() {
   const [prompt, setPrompt] = useState(null);
   const [shown, setShown] = useState(false);
@@ -2107,10 +2365,17 @@ function SubscriptionScreen({ user, sub, onActivateTrial, onSubscribed }) {
 
   const startTrial = async () => {
     setLoading(true);
-    // Anti-abus : vérifie si cet email a déjà eu un essai
-    const alreadyUsed = await hasUsedTrial(user.email);
-    if (alreadyUsed) {
+    // Anti-abus 1 : vérifie si cet email a déjà eu un essai
+    const emailUsed = await hasUsedTrial(user.email);
+    if (emailUsed) {
       setError("Cet email a déjà bénéficié de l'essai gratuit. Abonne-toi pour continuer.");
+      setLoading(false);
+      return;
+    }
+    // Anti-abus 2 : vérifie si cet appareil a déjà eu un essai
+    const deviceUsed = await deviceHasUsedTrial();
+    if (deviceUsed) {
+      setError("Un essai gratuit a déjà été utilisé sur cet appareil. Abonne-toi pour continuer.");
       setLoading(false);
       return;
     }
@@ -2124,8 +2389,12 @@ function SubscriptionScreen({ user, sub, onActivateTrial, onSubscribed }) {
       trialEndsAt: trialEnd.toISOString(),
     };
     const saved = await saveSubscription(user.email, newSub, user.token);
-    if (saved) onActivateTrial(newSub);
-    else setError("Erreur lors de l'activation. Réessaie.");
+    if (saved) {
+      markDeviceTrialUsed(); // Marque l'appareil
+      onActivateTrial(newSub);
+    } else {
+      setError("Erreur lors de l'activation. Réessaie.");
+    }
     setLoading(false);
   };
 
