@@ -542,11 +542,15 @@ FORMAT STRICT — respecte exactement ces balises :
 → [Marché] : [Sélection] @ [Cote estimée] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
 → [Marché] : [Sélection] @ [Cote estimée] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
 
-🏆 MA RECOMMANDATION FINALE :
-[SI VALUE BET] → 💎 VALUE BET IDENTIFIÉE : [Sélection exacte] @ [Cote] sur [Marché exact] — Confiance [X]/10 — [Raison en 1 phrase]
-[SI PAS DE VALUE BET] → ⚖️ Pas de value bet sur ce match. Meilleure opportunité : [Sélection exacte] @ [Cote entre 1.40 et 2.50 idéalement] sur [Marché exact] — Confiance [X]/10 — [Pourquoi c'est le meilleur choix disponible en 1 phrase]
+🏆 MON PARI :
+Donne UNE seule ligne, claire, directe, sans ambiguïté :
+"Je mise sur [SÉLECTION EXACTE] @ [COTE] — marché : [MARCHÉ EXACT] — confiance [X]/10 — [raison en 10 mots max]"
 
-⚠️ ATTENTION : [La seule chose qui pourrait tout changer — sois honnête]
+Si tu as trouvé une value bet, commence par 💎
+Si pas de value bet, commence par ⚖️ mais donne quand même UN pari concret.
+INTERDIT : "je ne recommande pas", "à éviter", "trop risqué sans recommandation" — tu dois toujours donner UN pari.
+
+⚠️ ATTENTION : [une seule chose courte et concrète]
 ---`;
 
 const FOOTBALL_SYSTEM_PROMPT = `Tu es l'analyste football de BetTrust. Tu combines la rigueur d'un data scientist, le regard d'un scout professionnel et la logique d'un trader sportif.
@@ -601,11 +605,15 @@ FORMAT STRICT — respecte exactement ces balises :
 → [Marché exact] : [Sélection] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison]
 → [Buteur probable] : [Nom] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison]
 
-🏆 MA RECOMMANDATION FINALE :
-[SI VALUE BET TROUVÉE] → 💎 VALUE BET : [Sélection exacte] @ [Cote] sur [Marché exact] — Confiance [X]/10 — [Raison en 1 phrase]
-[SI PAS DE VALUE BET] → ⚖️ PAS DE VALUE BET SUR CE MATCH. Le pari le plus intéressant reste : [Sélection] @ [Cote] sur [Marché] — [Pourquoi c'est le meilleur choix disponible]
+🏆 MON PARI :
+Donne UNE seule ligne, claire, directe, sans ambiguïté :
+"Je mise sur [SÉLECTION EXACTE] @ [COTE] — marché : [MARCHÉ EXACT] — confiance [X]/10 — [raison en 10 mots max]"
 
-⚠️ ATTENTION : [La seule chose qui pourrait tout changer]
+Si value bet : commence par 💎. Si pas de value bet : commence par ⚖️ mais donne quand même UN pari.
+INTERDIT de ne rien recommander. INTERDIT de proposer une cote <1.35.
+Cherche parmi tous les marchés : over/under buts, both teams score, mi-temps, buteur, corners, handicap, score exact.
+
+⚠️ ATTENTION : [une seule chose courte et concrète]
 ---`;
 
 async function analyzeMatch(match) {
@@ -846,134 +854,113 @@ function LineupLoadingAnimation({ match }) {
     {icon:"💎", text:"Calcul probabilités joueurs..."},
   ];
 
-  // Terrain VERTICAL — viewBox 100x160
-  // Positions EN POURCENTAGE dans le viewBox (x: 0-100, y: 0-160)
-  // Équipe 1 en haut (attaque vers le bas), Équipe 2 en bas
-  // Tous les joueurs sont DANS le terrain (entre y=8% et y=92%)
-  const FIELD = { x1:8, y1:8, x2:92, y2:92, w:84, h:84, cx:50, cy:50 };
+  // UNE SEULE ÉQUIPE — 11 joueurs bleus, parfaitement symétriques
+  // Terrain vertical viewBox 100x150
+  // GK en bas, ATT en haut — espacement ÉGAL entre chaque ligne
+  // Marges terrain: y=10 à y=140 => hauteur utile = 130
+  // 5 lignes: GK(y=128), DEF(y=102), MIL(y=76), ATT(y=50), (espace haut=10)
+  // Espacement entre lignes = 26 (égal partout)
 
-  // Positions exprimées en % du viewBox (0-100 x, 0-100 y)
-  const team1Positions = [
-    // GK
-    {x:50, y:11},
-    // DEF (4)
-    {x:18, y:25}, {x:36, y:25}, {x:64, y:25}, {x:82, y:25},
-    // MIL (3)
-    {x:25, y:40}, {x:50, y:40}, {x:75, y:40},
-    // ATT (3)
-    {x:25, y:52}, {x:50, y:52}, {x:75, y:52},
-  ];
-  const team2Positions = [
-    // GK
-    {x:50, y:89},
-    // DEF (4)
-    {x:18, y:75}, {x:36, y:75}, {x:64, y:75}, {x:82, y:75},
-    // MIL (3)
-    {x:25, y:63}, {x:50, y:63}, {x:75, y:63},
-    // ATT (3)
-    {x:25, y:53}, {x:50, y:53}, {x:75, y:53},
+  const players = [
+    // GK — centré
+    {x:50, y:128, num:1},
+    // DEF (4) — espacés régulièrement sur 80% de la largeur
+    {x:15, y:102, num:2}, {x:38, y:102, num:3}, {x:62, y:102, num:4}, {x:85, y:102, num:5},
+    // MIL (3) — espacés régulièrement
+    {x:20, y:76, num:6}, {x:50, y:76, num:8}, {x:80, y:76, num:7},
+    // ATT (3) — espacés régulièrement
+    {x:20, y:50, num:9}, {x:50, y:50, num:10}, {x:80, y:50, num:11},
   ];
 
-  const t1Visible = Math.min(11, Math.floor(tick/10)+1);
-  const t2Visible = Math.max(0, Math.min(11, Math.floor(tick/10)-5));
+  const visibleCount = Math.min(11, Math.floor(tick/10)+1);
 
   return (
     <div style={{padding:"16px 0 24px"}}>
       <style>{`
-        @keyframes playerPop{0%{opacity:0;transform:translate(-50%,-50%) scale(0)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
-        @keyframes scanH{0%{top:8%}100%{top:92%}}
+        @keyframes playerPop2{0%{opacity:0;transform:translate(-50%,-50%) scale(0)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+        @keyframes scanH2{0%{top:10%}100%{top:90%}}
+        @keyframes dotBlink{0%,100%{opacity:0.3}50%{opacity:1}}
       `}</style>
 
       <div style={{textAlign:"center",marginBottom:12}}>
-        <div style={{fontSize:14,fontWeight:800,color:"#111827",marginBottom:3}}>{stepLabels[step].icon} {stepLabels[step].text}</div>
+        <div style={{fontSize:14,fontWeight:800,color:"#111827",marginBottom:3}}>
+          {stepLabels[step].icon} {stepLabels[step].text}
+        </div>
         <div style={{fontSize:12,color:"#6b7280"}}>{match.p1} vs {match.p2}</div>
       </div>
 
-      {/* Terrain vertical */}
-      <div style={{position:"relative",width:"100%",paddingBottom:"150%",borderRadius:14,overflow:"hidden",marginBottom:14,background:"#16552e"}}>
+      {/* Terrain vertical — ratio 2:3 */}
+      <div style={{position:"relative",width:"70%",margin:"0 auto",paddingBottom:"105%",borderRadius:14,overflow:"hidden",marginBottom:14}}>
         {/* SVG terrain */}
-        <svg style={{position:"absolute",inset:0,width:"100%",height:"100%"}} viewBox="0 0 100 150" preserveAspectRatio="none">
-          {/* Fond avec bandes */}
+        <svg style={{position:"absolute",inset:0,width:"100%",height:"100%"}} viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">
+          {/* Fond */}
           <rect width="100" height="150" fill="#16552e"/>
+          {/* Bandes */}
           {[0,1,2,3,4,5,6,7,8].map(i=>(
-            <rect key={i} x="0" y={i*17} width="100" height="17" fill={i%2===0?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.02)"}/>
+            <rect key={i} x="0" y={i*17} width="100" height="17"
+              fill={i%2===0?"rgba(255,255,255,0.025)":"rgba(0,0,0,0.025)"}/>
           ))}
           {/* Bordure */}
-          <rect x="6" y="8" width="88" height="134" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="1.2"/>
+          <rect x="5" y="8" width="90" height="134" fill="none"
+            stroke="rgba(255,255,255,0.9)" strokeWidth="1.2"/>
           {/* Ligne médiane */}
-          <line x1="6" y1="75" x2="94" y2="75" stroke="rgba(255,255,255,0.85)" strokeWidth="1.2"/>
+          <line x1="5" y1="75" x2="95" y2="75"
+            stroke="rgba(255,255,255,0.7)" strokeWidth="1"/>
           {/* Rond central */}
-          <circle cx="50" cy="75" r="14" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1"/>
-          <circle cx="50" cy="75" r="1.5" fill="rgba(255,255,255,0.8)"/>
-          {/* Surface haut */}
-          <rect x="26" y="8" width="48" height="22" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="0.9"/>
-          <rect x="38" y="8" width="24" height="10" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.7"/>
-          <circle cx="50" cy="22" r="1" fill="rgba(255,255,255,0.6)"/>
-          {/* Surface bas */}
-          <rect x="26" y="120" width="48" height="22" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="0.9"/>
-          <rect x="38" y="132" width="24" height="10" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.7"/>
-          <circle cx="50" cy="128" r="1" fill="rgba(255,255,255,0.6)"/>
-          {/* Coins */}
-          <path d="M6 12 Q10 8 14 8" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
-          <path d="M86 8 Q90 8 94 12" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
-          <path d="M6 138 Q6 142 10 142" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
-          <path d="M94 138 Q94 142 90 142" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
+          <circle cx="50" cy="75" r="12" fill="none"
+            stroke="rgba(255,255,255,0.6)" strokeWidth="0.9"/>
+          <circle cx="50" cy="75" r="1.2" fill="rgba(255,255,255,0.7)"/>
+          {/* Surface en haut */}
+          <rect x="28" y="8" width="44" height="20" fill="none"
+            stroke="rgba(255,255,255,0.55)" strokeWidth="0.8"/>
+          <rect x="38" y="8" width="24" height="9" fill="none"
+            stroke="rgba(255,255,255,0.35)" strokeWidth="0.7"/>
+          {/* Surface en bas */}
+          <rect x="28" y="122" width="44" height="20" fill="none"
+            stroke="rgba(255,255,255,0.55)" strokeWidth="0.8"/>
+          <rect x="38" y="133" width="24" height="9" fill="none"
+            stroke="rgba(255,255,255,0.35)" strokeWidth="0.7"/>
+          {/* Point penalty haut et bas */}
+          <circle cx="50" cy="20" r="0.8" fill="rgba(255,255,255,0.6)"/>
+          <circle cx="50" cy="130" r="0.8" fill="rgba(255,255,255,0.6)"/>
         </svg>
 
-        {/* Ligne de scan */}
-        <div style={{position:"absolute",left:"6%",right:"6%",height:2,background:"rgba(74,222,128,0.7)",animation:"scanH 2.5s linear infinite",top:"8%",zIndex:5,boxShadow:"0 0 8px rgba(74,222,128,0.5)"}}/>
+        {/* Ligne scan */}
+        <div style={{
+          position:"absolute",left:"5%",right:"5%",height:1.5,
+          background:"rgba(74,222,128,0.8)",
+          animation:"scanH2 2.5s linear infinite",top:"10%",
+          zIndex:5,boxShadow:"0 0 6px rgba(74,222,128,0.6)",
+        }}/>
 
-        {/* Étiquettes équipes */}
-        <div style={{position:"absolute",top:"2%",left:0,right:0,textAlign:"center",fontSize:"2.5vw",fontWeight:800,color:"rgba(255,255,255,0.7)",zIndex:6}}>{match.p1}</div>
-        <div style={{position:"absolute",bottom:"2%",left:0,right:0,textAlign:"center",fontSize:"2.5vw",fontWeight:800,color:"rgba(255,255,255,0.7)",zIndex:6}}>{match.p2}</div>
-
-        {/* Joueurs équipe 1 (bleu) */}
-        {team1Positions.slice(0,t1Visible).map((pos,i)=>(
-          <div key={`t1-${i}`} style={{
+        {/* Joueurs — UNE SEULE équipe, bleu uniforme */}
+        {players.slice(0, visibleCount).map((p, i) => (
+          <div key={i} style={{
             position:"absolute",
-            left:`${pos.x}%`, top:`${pos.y*150/100}%`,
+            left:`${p.x}%`,
+            top:`${(p.y/150)*100}%`,
             transform:"translate(-50%,-50%)",
-            width:"7%", height:0, paddingBottom:"7%",
+            width:"12%", paddingBottom:"12%", height:0,
             zIndex:10,
           }}>
             <div style={{
               position:"absolute",inset:0,
               borderRadius:"50%",
               background:"#1565c0",
-              border:"1.5px solid rgba(255,255,255,0.95)",
+              border:"2px solid rgba(255,255,255,0.95)",
               display:"flex",alignItems:"center",justifyContent:"center",
-              fontSize:"2vw",fontWeight:900,color:"#fff",
-              boxShadow:"0 2px 6px rgba(0,0,0,0.5)",
-              animation:"playerPop 0.4s cubic-bezier(.34,1.56,.64,1) both",
-            }}>{i+1}</div>
+              fontSize:"clamp(6px,2.5vw,11px)",
+              fontWeight:900,color:"#fff",
+              boxShadow:"0 2px 8px rgba(0,0,0,0.5)",
+              animation:"playerPop2 0.4s cubic-bezier(.34,1.56,.64,1) both",
+              animationDelay:`${i*0.08}s`,
+            }}>{p.num}</div>
           </div>
         ))}
 
-        {/* Joueurs équipe 2 (rouge) */}
-        {team2Positions.slice(0,t2Visible).map((pos,i)=>(
-          <div key={`t2-${i}`} style={{
-            position:"absolute",
-            left:`${pos.x}%`, top:`${pos.y*150/100}%`,
-            transform:"translate(-50%,-50%)",
-            width:"7%", height:0, paddingBottom:"7%",
-            zIndex:10,
-          }}>
-            <div style={{
-              position:"absolute",inset:0,
-              borderRadius:"50%",
-              background:"#c62828",
-              border:"1.5px solid rgba(255,255,255,0.95)",
-              display:"flex",alignItems:"center",justifyContent:"center",
-              fontSize:"2vw",fontWeight:900,color:"#fff",
-              boxShadow:"0 2px 6px rgba(0,0,0,0.5)",
-              animation:"playerPop 0.4s cubic-bezier(.34,1.56,.64,1) both",
-            }}>{i+1}</div>
-          </div>
-        ))}
-
-        {/* Barre progression */}
-        <div style={{position:"absolute",bottom:0,left:0,right:0,height:3,background:"rgba(0,0,0,0.3)"}}>
-          <div style={{height:"100%",width:`${((t1Visible+t2Visible)/22)*100}%`,background:"#4ade80",transition:"width 0.4s ease"}}/>
+        {/* Progression */}
+        <div style={{position:"absolute",bottom:0,left:0,right:0,height:3,background:"rgba(0,0,0,0.4)"}}>
+          <div style={{height:"100%",width:`${(visibleCount/11)*100}%`,background:"#4ade80",transition:"width 0.4s ease",borderRadius:"0 0 14px 14px"}}/>
         </div>
       </div>
 
@@ -1015,26 +1002,27 @@ async function analyzeLineup(match) {
 
 // Calcule les positions (x, y) des joueurs sur le terrain selon la formation
 function getPlayerPositions(players, teamSide) {
-  // Groupe par row
   const rows = {};
   players.forEach(p => {
-    if (!rows[p.row]) rows[p.row] = [];
-    rows[p.row].push(p);
+    const r = p.row ?? 0;
+    if (!rows[r]) rows[r] = [];
+    rows[r].push(p);
   });
 
   const positions = {};
-  const FIELD_W = 100; const FIELD_H = 100;
+  // Espacement ÉGAL entre chaque ligne (26px) dans viewBox 100x150
+  // teamSide "top" = GK en haut (y faible), ATT en bas (y fort)
+  // teamSide "bottom" = GK en bas (y fort), ATT en haut (y faible)
+  const rowY_top    = [12, 38, 64, 90, 116];
+  const rowY_bottom = [128, 102, 76, 50, 24];
 
-  Object.entries(rows).forEach(([row, ps]) => {
-    const r = parseInt(row);
+  Object.entries(rows).forEach(([rowStr, ps]) => {
+    const r = Math.min(parseInt(rowStr), 4);
+    const y = (teamSide === "top" ? rowY_top : rowY_bottom)[r];
     const n = ps.length;
-    const yBase = teamSide === "top"
-      ? [8, 22, 35, 48, 60][r] || 15 + r * 15
-      : [92, 78, 65, 52, 40][r] || 85 - r * 15;
-
     ps.forEach((p, i) => {
       const x = n === 1 ? 50 : 10 + (i / (n - 1)) * 80;
-      positions[p.name] = { x, y: yBase };
+      positions[p.name] = { x, y };
     });
   });
   return positions;
@@ -2017,7 +2005,7 @@ function AnalysisPanel({ match, onClose }) {
     const isSignal = l => l.startsWith('🔍') || l.includes('VALUE BET') || l.includes('value bet') || l.includes('PIÈGE') || l.includes('piège');
     const isAnalyse = l => l.startsWith('📊') || l.match(/^ANALYSE/i);
     const isMarches = l => l.startsWith('🎯 MARCH') || l.match(/^MARCH.*DISPONIBLES/i) || l.match(/^TOUS LES PARIS/i);
-    const isBest = l => l.startsWith('🏆') || l.match(/^MA RECOMMANDATION FINALE/i) || l.match(/^LE MEILLEUR PARI/i);
+    const isBest = l => l.startsWith('🏆') || l.match(/^MA RECOMMANDATION FINALE/i) || l.match(/^LE MEILLEUR PARI/i) || l.match(/^MON PARI/i);
     const isWarning = l => l.startsWith('⚠️') || l.match(/^ATTENTION\s*:/i);
     const isBetItem = l => l.startsWith('→') || (l.includes('@') && l.includes('—') && l.length > 20);
     const isValueLine = l => l.includes('💎') || l.toUpperCase().includes('VALUE BET');
@@ -2181,7 +2169,7 @@ function AnalysisPanel({ match, onClose }) {
         if (inAnalyse) flushAnalyse();
         if (inMarches) flushMarches();
         inBest = true;
-        const txt = l.replace(/^🏆\s*/,'').replace(/^MA RECOMMANDATION FINALE\s*:\s*/i,'').replace(/^LE MEILLEUR PARI DU MATCH\s*:\s*/i,'').trim();
+        const txt = l.replace(/^🏆\s*/,'').replace(/^MA RECOMMANDATION FINALE\s*:\s*/i,'').replace(/^LE MEILLEUR PARI DU MATCH\s*:\s*/i,'').replace(/^MON PARI\s*:\s*/i,'').trim();
         if (txt) bestLines.push(txt);
 
       } else if (isWarning(l)) {
@@ -2653,7 +2641,16 @@ function SubscriptionScreen({ user, sub, onActivateTrial, onSubscribed }) {
         {status.status === "none" && (
           <div style={{fontSize:12,color:C.gray,marginBottom:10}}>Puis {plan==="annual"?"249€/an":"24,90€/mois"} après l'essai</div>
         )}
-        <div style={{fontSize:11,color:"#9ca3af"}}>Paiement sécurisé par Stripe · Sans engagement · Résiliable à tout moment</div>
+        <div style={{fontSize:11,color:"#9ca3af",marginBottom:16}}>Paiement sécurisé par Stripe · Sans engagement · Résiliable à tout moment</div>
+
+        {/* Contact Snapchat */}
+        <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14,textAlign:"center"}}>
+          <div style={{fontSize:12,color:C.gray,marginBottom:10}}>Une question sur l'abonnement ?</div>
+          <a href="https://snapchat.com/add/solo75lifee" target="_blank" rel="noreferrer"
+            style={{display:"inline-flex",alignItems:"center",gap:8,background:"#FFFC00",color:"#111",textDecoration:"none",borderRadius:10,padding:"9px 18px",fontWeight:800,fontSize:13,fontFamily:"inherit"}}>
+            <span style={{fontSize:16}}>👻</span> @solo75lifee
+          </a>
+        </div>
       </div>
     </div>
   );
@@ -2741,8 +2738,24 @@ function EdgeGauge({ signal, compact }) {
 // ─── RADAR DU JOUR ─────────────────────────────────────────────────
 // Calcule, sur l'ensemble tennis + football, les matchs avec un signal
 // fort (piège ou value bet) et en retient les 2-3 plus marqués.
+// Filtre les matchs du jour et du lendemain uniquement
+function filterTodayTomorrow(matches) {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(23, 59, 59, 999);
+
+  return matches.filter(m => {
+    try {
+      const matchDate = new Date(m.commence_time || m.date);
+      return matchDate >= now && matchDate <= tomorrow;
+    } catch(e) { return true; }
+  });
+}
+
 function computeRadarPicks(allMatches, maxPicks = 3) {
-  const candidates = allMatches.map(match => {
+  const filtered = filterTodayTomorrow(allMatches);
+  const candidates = filtered.map(match => {
     const opts = [{label:match.p1,cote:match.c1},...(match.cN?[{label:"Nul",cote:match.cN}]:[]),{label:match.p2,cote:match.c2}];
     const best = opts.reduce((a,b)=>a.cote<b.cote?a:b);
     const opponentCote = best.cote===match.c1 ? match.c2 : match.c1;
@@ -2751,19 +2764,18 @@ function computeRadarPicks(allMatches, maxPicks = 3) {
     return { match, signal, best };
   }).filter(c => c.signal.type !== "neutral");
 
-  // Tri par force du signal (écart absolu le plus marqué en premier)
   candidates.sort((a, b) => Math.abs(b.signal.edge) - Math.abs(a.signal.edge));
   return candidates.slice(0, maxPicks);
 }
 
 // ─── COMBINÉ INTELLIGENT ───────────────────────────────────────────
-// Construit toujours 3 sélections : priorité absolue aux value bets (💎),
-// jamais de piège (🪤), complété par les meilleurs paris neutres (⚖️)
-// uniquement si pas assez de value bets disponibles.
 const SMART_COMBO_SIZE = 3;
 
 function computeSmartCombo(allMatches) {
-  const all = allMatches.map(match => {
+  // Filtre uniquement aujourd'hui et demain
+  const filtered = filterTodayTomorrow(allMatches);
+
+  const all = filtered.map(match => {
     const opts = [{label:match.p1,cote:match.c1},...(match.cN?[{label:"Nul",cote:match.cN}]:[]),{label:match.p2,cote:match.c2}];
     const best = opts.reduce((a,b)=>a.cote<b.cote?a:b);
     const opponentCote = best.cote===match.c1 ? match.c2 : match.c1;
@@ -2774,7 +2786,6 @@ function computeSmartCombo(allMatches) {
 
   const valueBets = all.filter(c => c.signal.type === "value").sort((a,b) => b.signal.edge - a.signal.edge);
   const neutrals = all.filter(c => c.signal.type === "neutral").sort((a,b) => b.signal.aiProb - a.signal.aiProb);
-  // Les pièges (signal.type === "trap") sont volontairement exclus, toujours.
 
   const selections = [...valueBets];
   if (selections.length < SMART_COMBO_SIZE) {
@@ -2786,7 +2797,6 @@ function computeSmartCombo(allMatches) {
   if (finalSelections.length === 0) return null;
 
   const totalCote = finalSelections.reduce((acc, s) => acc * s.best.cote, 1);
-  // Probabilité globale réaliste : produit des probabilités IA estimées (pas des cotes brutes)
   const globalProb = finalSelections.reduce((acc, s) => acc * (s.signal.aiProb / 100), 1) * 100;
   const valueCount = finalSelections.filter(s => s.signal.type === "value").length;
 
@@ -3734,14 +3744,50 @@ export default function BetTrust() {
   );
   const [showRatingPrompt, setShowRatingPrompt] = useState(false);
   const [ratingChecked, setRatingChecked] = useState(false);
-  const [allMatches, setAllMatches] = useState([]); // tennis + football, pour le radar du jour
+  const [allMatches, setAllMatches] = useState([]);
+
+  // ── RECONNEXION AUTOMATIQUE ──────────────────────────────────────
+  // Au démarrage : vérifie si une session est sauvegardée en local
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("bt_session");
+      if (saved) {
+        const session = JSON.parse(saved);
+        // Vérifie que la session n'est pas trop ancienne (30 jours)
+        const age = Date.now() - (session.savedAt || 0);
+        if (age < 30 * 24 * 60 * 60 * 1000 && session.email && session.token) {
+          setUser(session);
+          setShowHero(false);
+          // Vérifie aussi le consentement local
+          const localConsent = localStorage.getItem(`bt_consent_${session.email}`);
+          if (localConsent) {
+            setConsent(localConsent);
+            setConsentLoaded(true);
+          }
+        } else {
+          localStorage.removeItem("bt_session");
+        }
+      }
+    } catch(e) {}
+  }, []);
 
   useEffect(() => {
     if (!user) return;
     getBets(user.email, user.token).then(setBets);
     getSubscription(user.email, user.token).then(s => { setSub(s); setSubLoaded(true); });
     getLastSeen(user.email, user.token).then(setLastSeen);
-    getConsent(user.email, user.token).then(c => { setConsent(c); setConsentLoaded(true); });
+    // Consentement : vérifie localStorage d'abord (plus rapide)
+    const localConsent = localStorage.getItem(`bt_consent_${user.email}`);
+    if (localConsent) {
+      setConsent(localConsent);
+      setConsentLoaded(true);
+    } else {
+      getConsent(user.email, user.token).then(c => {
+        if (c) localStorage.setItem(`bt_consent_${user.email}`, c);
+        setConsent(c);
+        setConsentLoaded(true);
+      });
+    }
     saveLastSeen(user.email, user.token);
   }, [user]);
 
@@ -3791,10 +3837,21 @@ export default function BetTrust() {
   const onBetSaved = (bet) => { setBets(prev=>[bet,...prev]); setAddBetTarget(null); };
 
   if (showHero && !user) return <HeroScreen onEnter={(tab) => { setHeroTab(tab); setShowHero(false); }} />;
-  if (!user) return <AuthScreen onLogin={setUser} initialTab={heroTab} />;
+  if (!user) return <AuthScreen onLogin={(userData) => {
+    // Sauvegarde la session pour reconnexion automatique
+    try {
+      localStorage.setItem("bt_session", JSON.stringify({...userData, savedAt: Date.now()}));
+    } catch(e) {}
+    setUser(userData);
+  }} initialTab={heroTab} />;
 
   if (consentLoaded && !consent) {
-    return <ConsentScreen user={user} onAccept={() => setConsent(new Date().toISOString())} />;
+    return <ConsentScreen user={user} onAccept={() => {
+      const now = new Date().toISOString();
+      try { localStorage.setItem(`bt_consent_${user.email}`, now); } catch(e) {}
+      saveConsent(user.email, user.token);
+      setConsent(now);
+    }} />;
   }
 
   if (consent && !exclusivityShown) {
@@ -3838,7 +3895,11 @@ export default function BetTrust() {
           </div>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:13,fontWeight:600,color:C.gray}}>👋 {user.name}</span>
-            <button onClick={()=>{setUser(null);setBets([]);}} style={{background:"none",border:`1.5px solid ${C.border}`,borderRadius:8,padding:"4px 11px",cursor:"pointer",fontSize:12,color:C.gray,fontWeight:600,fontFamily:"inherit"}}>Déco</button>
+            <button onClick={()=>{
+              try { localStorage.removeItem("bt_session"); } catch(e) {}
+              setUser(null); setBets([]); setSub(null); setSubLoaded(false);
+              setConsent(null); setConsentLoaded(false); setShowHero(true);
+            }} style={{background:"none",border:`1.5px solid ${C.border}`,borderRadius:8,padding:"4px 11px",cursor:"pointer",fontSize:12,color:C.gray,fontWeight:600,fontFamily:"inherit"}}>Déco</button>
           </div>
         </div>
       </div>
@@ -4055,7 +4116,7 @@ export default function BetTrust() {
                 Scanner une cote →
               </button>
             </div>
-            <div style={{background:"#fff",border:`1.5px solid ${C.border}`,borderRadius:16,padding:"18px 20px"}}>
+            <div style={{background:"#fff",border:`1.5px solid ${C.border}`,borderRadius:16,padding:"18px 20px",marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:800,color:"#111827",marginBottom:12}}>Comment ça marche</div>
               {[
                 {icon:"1️⃣",text:"Tu vois une cote sur ton appli de paris (ex: 2.40 sur PSG)"},
@@ -4068,6 +4129,24 @@ export default function BetTrust() {
                   <span style={{fontSize:13,color:"#374151",lineHeight:1.5}}>{s.text}</span>
                 </div>
               ))}
+            </div>
+
+            {/* Contact Snapchat */}
+            <div style={{background:"linear-gradient(135deg,#FFFC00,#FFD700)",borderRadius:16,padding:"18px 20px",textAlign:"center"}}>
+              <div style={{fontSize:28,marginBottom:8}}>👻</div>
+              <div style={{fontSize:15,fontWeight:900,color:"#111",marginBottom:6}}>Une question ? Un problème ?</div>
+              <div style={{fontSize:13,color:"#333",marginBottom:14,lineHeight:1.6}}>
+                Notre équipe est disponible sur Snapchat pour toute demande — FAQ, bug, abonnement.
+              </div>
+              <a
+                href="https://snapchat.com/add/solo75lifee"
+                target="_blank"
+                rel="noreferrer"
+                style={{display:"inline-flex",alignItems:"center",gap:8,background:"#111",color:"#FFFC00",textDecoration:"none",borderRadius:12,padding:"11px 22px",fontWeight:800,fontSize:14,fontFamily:"inherit"}}
+              >
+                <span style={{fontSize:18}}>👻</span>
+                @solo75lifee
+              </a>
             </div>
           </div>
         ) : null}
