@@ -959,12 +959,6 @@ function LineupLoadingAnimation({ match }) {
 
         {/* Joueurs positionnés EN SVG pour parfaite cohérence avec le terrain */}
         <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",overflow:"visible"}} viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">
-          {players.slice(0, visibleCount).map((p, i) => (
-            <g key={i} style={{animation:`playerPop2 0.4s cubic-bezier(.34,1.56,.64,1) ${i*0.08}s both`}}>
-              <circle cx={p.x} cy={p.y} r="5.5" fill="#1565c0" stroke="rgba(255,255,255,0.95)" strokeWidth="1.5"/>
-              <text x={p.x} y={p.y+1.5} textAnchor="middle" dominantBaseline="middle" fontSize="4" fontWeight="900" fill="#fff" fontFamily="system-ui">{p.num}</text>
-            </g>
-          ))}
         </svg>
 
         {/* Progression */}
@@ -2883,102 +2877,62 @@ function LineupPanel({ match, onClose }) {
   const TacticalField = ({ teamData, side }) => {
     if (!teamData?.players?.length) return null;
     const positions = getPlayerPositions(teamData.players, side);
+    const teamColor = teamData.color || "#1a56db";
 
     return (
       <div style={{position:"relative",width:"100%",aspectRatio:"2/3",borderRadius:12,overflow:"hidden",background:"#2d6a2d"}}>
-        {/* Terrain SVG */}
-        <svg width="100%" height="100%" viewBox="0 0 100 150" preserveAspectRatio="none" style={{position:"absolute",inset:0}}>
+        <svg width="100%" height="100%" viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet" style={{position:"absolute",inset:0}}>
           {/* Fond */}
           <rect width="100" height="150" fill="#2d6a2d"/>
-          {/* Bandes de tonte */}
           {[0,1,2,3,4,5,6,7,8,9].map(i=>(
             <rect key={i} x="0" y={i*15} width="100" height="15" fill={i%2===0?"rgba(0,0,0,0.06)":"rgba(255,255,255,0.03)"}/>
           ))}
-          {/* Lignes */}
+          {/* Lignes terrain */}
           <rect x="5" y="5" width="90" height="140" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="0.8"/>
           <line x1="5" y1="75" x2="95" y2="75" stroke="rgba(255,255,255,0.7)" strokeWidth="0.8"/>
           <circle cx="50" cy="75" r="12" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="0.7"/>
           <circle cx="50" cy="75" r="1" fill="rgba(255,255,255,0.8)"/>
-          {/* Surface haut */}
           <rect x="22" y="5" width="56" height="20" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.6"/>
           <rect x="36" y="5" width="28" height="9" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5"/>
-          <circle cx="50" cy="17" r="1" fill="rgba(255,255,255,0.6)"/>
-          {/* Surface bas */}
           <rect x="22" y="125" width="56" height="20" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.6"/>
           <rect x="36" y="136" width="28" height="9" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.5"/>
-          <circle cx="50" cy="133" r="1" fill="rgba(255,255,255,0.6)"/>
-          {/* Buts */}
-          <rect x="38" y="2" width="24" height="5" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="0.6"/>
-          <rect x="38" y="143" width="24" height="5" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="0.6"/>
+
+          {/* Joueurs — positionnés en coordonnées SVG */}
+          {teamData.players.map((player, i) => {
+            const pos = positions[player.name];
+            if (!pos) return null;
+            const isSelected = selectedPlayer?.name === player.name;
+            const hasAlert = player.alert || player.butPct > 70 || player.passePct > 70;
+            const r = isSelected ? 7 : 5.5;
+            const label = player.number
+              ? String(player.number)
+              : player.name.split(" ").pop().slice(0,3).toUpperCase();
+
+            return (
+              <g key={i} onClick={() => setSelectedPlayer(isSelected ? null : player)} style={{cursor:"pointer"}}>
+                {hasAlert && <circle cx={pos.x+4} cy={pos.y-4} r="2.5" fill="#dc2626" stroke="#fff" strokeWidth="0.8"/>}
+                <circle cx={pos.x} cy={pos.y} r={r}
+                  fill={isSelected?"#fff":teamColor}
+                  stroke={isSelected?teamColor:"rgba(255,255,255,0.9)"}
+                  strokeWidth={isSelected?"1.5":"1.2"}/>
+                <text x={pos.x} y={pos.y+1.2}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontSize={isSelected?"4.5":"3.5"} fontWeight="900"
+                  fill={isSelected?teamColor:"#fff"}
+                  fontFamily="system-ui,-apple-system,sans-serif">
+                  {label}
+                </text>
+                <text x={pos.x} y={pos.y+r+4}
+                  textAnchor="middle" dominantBaseline="middle"
+                  fontSize="2.8" fontWeight="600"
+                  fill="rgba(255,255,255,0.85)"
+                  fontFamily="system-ui,-apple-system,sans-serif">
+                  {player.name.split(" ").pop()}
+                </text>
+              </g>
+            );
+          })}
         </svg>
-
-        {/* Joueurs */}
-        {teamData.players.map((player, i) => {
-          const pos = positions[player.name];
-          if (!pos) return null;
-          const isSelected = selectedPlayer?.name === player.name;
-          const hasAlert = player.alert || player.butPct > 70 || player.passePct > 70;
-          const teamColor = teamData.color || "#1a56db";
-
-          return (
-            <div
-              key={i}
-              onClick={() => setSelectedPlayer(isSelected ? null : player)}
-              style={{
-                position:"absolute",
-                left:`${pos.x}%`,
-                top:`${pos.y}%`,
-                transform:"translate(-50%,-50%)",
-                display:"flex",
-                flexDirection:"column",
-                alignItems:"center",
-                gap:2,
-                cursor:"pointer",
-                zIndex:10,
-              }}
-            >
-              {/* Badge alerte */}
-              {hasAlert && (
-                <div style={{position:"absolute",top:-8,right:-4,width:12,height:12,background:"#dc2626",borderRadius:"50%",border:"1.5px solid #fff",fontSize:7,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,zIndex:11}}>!</div>
-              )}
-              {/* Cercle joueur */}
-              <div style={{
-                width:isSelected?34:28,
-                height:isSelected?34:28,
-                borderRadius:"50%",
-                background:isSelected?"#fff":teamColor,
-                border:isSelected?`3px solid ${teamColor}`:"2.5px solid rgba(255,255,255,0.9)",
-                display:"flex",
-                alignItems:"center",
-                justifyContent:"center",
-                fontSize:isSelected?11:9,
-                fontWeight:900,
-                color:isSelected?teamColor:"#fff",
-                boxShadow:isSelected?"0 0 12px rgba(255,255,255,0.8)":"0 2px 6px rgba(0,0,0,0.3)",
-                transition:"all 0.2s ease",
-              }}>
-                {player.number || player.name.split(" ").pop().slice(0,3).toUpperCase()}
-              </div>
-              {/* Nom */}
-              <div style={{
-                fontSize:7,
-                fontWeight:700,
-                color:"#fff",
-                textShadow:"0 1px 3px rgba(0,0,0,0.8)",
-                whiteSpace:"nowrap",
-                maxWidth:45,
-                overflow:"hidden",
-                textOverflow:"ellipsis",
-                textAlign:"center",
-                background:"rgba(0,0,0,0.35)",
-                borderRadius:4,
-                padding:"1px 3px",
-              }}>
-                {player.name.split(" ").pop()}
-              </div>
-            </div>
-          );
-        })}
       </div>
     );
   };
