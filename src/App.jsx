@@ -515,9 +515,18 @@ Blessure dans un match précédent, performance exceptionnelle ou catastrophique
 9. ANALYSE DES COTES ET DU MARCHÉ
 Convertis chaque cote en probabilité implicite. Compare avec ta propre estimation. Un écart >8% = signal fort. Cherche les marchés sur Winamax, Betclic, Unibet : vainqueur, handicap sets, total jeux, aces over/under, score exact, tie-break, etc.
 
-10. VERDICT HONNÊTE
-Si tu identifies une value bet claire : présente-la avec la cote et le marché exact.
-Si tu n'en identifies pas : dis-le clairement et propose le pari le plus intéressant et safe parmi tous les marchés disponibles — pas forcément le vainqueur, explore les marchés alternatifs.
+10. VERDICT HONNÊTE ET RECOMMANDATION OBLIGATOIRE
+Tu dois TOUJOURS terminer par une recommandation concrète. Deux cas :
+
+CAS 1 — Tu as trouvé une value bet (écart >8% entre prob. marché et prob. réelle) :
+→ Présente-la clairement avec le marché exact et la cote
+
+CAS 2 — Pas de value bet identifiée :
+→ Tu dois quand même proposer le pari le plus INTÉRESSANT parmi tous les marchés disponibles.
+→ "Intéressant" signifie : probabilité raisonnable (>55%) ET cote attractive (idéalement >1.50).
+→ Cherche parmi : handicap sets, total jeux over/under, nombre d'aces, score exact du set le plus probable, tie-break oui/non.
+→ INTERDIT de proposer une cote inférieure à 1.40 sauf si la confiance est 9+/10.
+→ INTERDIT de dire "je ne recommande rien" — il y a toujours un pari intéressant quelque part.
 
 FORMAT STRICT — respecte exactement ces balises :
 
@@ -526,16 +535,16 @@ FORMAT STRICT — respecte exactement ces balises :
 🔍 SIGNAL MARCHÉ : [💎 Value bet identifiée / ⚖️ Pas de value bet claire] — Prob. marché XX% vs estimation XX%
 
 📊 ANALYSE 360° :
-[Résumé structuré des 8 premiers points — concis mais complet, sois honnête sur ce que tu trouves ou ne trouves pas]
+[Résumé structuré et honnête — concis mais complet sur les 8 points clés]
 
 🎯 MARCHÉS DISPONIBLES ANALYSÉS :
-→ [Marché] : [Sélection] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
-→ [Marché] : [Sélection] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
-→ [Marché] : [Sélection] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
+→ [Marché] : [Sélection] @ [Cote estimée] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
+→ [Marché] : [Sélection] @ [Cote estimée] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
+→ [Marché] : [Sélection] @ [Cote estimée] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
 
 🏆 MA RECOMMANDATION FINALE :
-[SI VALUE BET TROUVÉE] → 💎 VALUE BET : [Sélection exacte] @ [Cote] sur [Marché exact] — Confiance [X]/10 — [Raison en 1 phrase]
-[SI PAS DE VALUE BET] → ⚖️ PAS DE VALUE BET SUR CE MATCH. Le pari le plus intéressant reste : [Sélection] @ [Cote] sur [Marché] — [Pourquoi c'est le meilleur choix disponible]
+[SI VALUE BET] → 💎 VALUE BET IDENTIFIÉE : [Sélection exacte] @ [Cote] sur [Marché exact] — Confiance [X]/10 — [Raison en 1 phrase]
+[SI PAS DE VALUE BET] → ⚖️ Pas de value bet sur ce match. Meilleure opportunité : [Sélection exacte] @ [Cote entre 1.40 et 2.50 idéalement] sur [Marché exact] — Confiance [X]/10 — [Pourquoi c'est le meilleur choix disponible en 1 phrase]
 
 ⚠️ ATTENTION : [La seule chose qui pourrait tout changer — sois honnête]
 ---`;
@@ -820,7 +829,7 @@ function LineupLoadingAnimation({ match }) {
   const [step, setStep] = useState(0);
 
   useEffect(() => {
-    const t = setInterval(() => setTick(n => n + 1), 50);
+    const t = setInterval(() => setTick(n => n + 1), 60);
     return () => clearInterval(t);
   }, []);
 
@@ -837,46 +846,144 @@ function LineupLoadingAnimation({ match }) {
     {icon:"💎", text:"Calcul probabilités joueurs..."},
   ];
 
-  const positions = [
-    {x:50,y:88},{x:20,y:72},{x:38,y:72},{x:62,y:72},{x:80,y:72},
-    {x:28,y:52},{x:50,y:52},{x:72,y:52},{x:30,y:30},{x:50,y:25},{x:70,y:30},
+  // Terrain VERTICAL — viewBox 100x160
+  // Positions EN POURCENTAGE dans le viewBox (x: 0-100, y: 0-160)
+  // Équipe 1 en haut (attaque vers le bas), Équipe 2 en bas
+  // Tous les joueurs sont DANS le terrain (entre y=8% et y=92%)
+  const FIELD = { x1:8, y1:8, x2:92, y2:92, w:84, h:84, cx:50, cy:50 };
+
+  // Positions exprimées en % du viewBox (0-100 x, 0-100 y)
+  const team1Positions = [
+    // GK
+    {x:50, y:11},
+    // DEF (4)
+    {x:18, y:25}, {x:36, y:25}, {x:64, y:25}, {x:82, y:25},
+    // MIL (3)
+    {x:25, y:40}, {x:50, y:40}, {x:75, y:40},
+    // ATT (3)
+    {x:25, y:52}, {x:50, y:52}, {x:75, y:52},
   ];
-  const visibleCount = Math.min(11, Math.floor(tick/8)+1);
+  const team2Positions = [
+    // GK
+    {x:50, y:89},
+    // DEF (4)
+    {x:18, y:75}, {x:36, y:75}, {x:64, y:75}, {x:82, y:75},
+    // MIL (3)
+    {x:25, y:63}, {x:50, y:63}, {x:75, y:63},
+    // ATT (3)
+    {x:25, y:53}, {x:50, y:53}, {x:75, y:53},
+  ];
+
+  const t1Visible = Math.min(11, Math.floor(tick/10)+1);
+  const t2Visible = Math.max(0, Math.min(11, Math.floor(tick/10)-5));
 
   return (
     <div style={{padding:"16px 0 24px"}}>
       <style>{`
-        @keyframes playerAppear{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}
-        @keyframes scanLine2{from{top:0%}to{top:100%}}
+        @keyframes playerPop{0%{opacity:0;transform:translate(-50%,-50%) scale(0)}100%{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+        @keyframes scanH{0%{top:8%}100%{top:92%}}
       `}</style>
-      <div style={{textAlign:"center",marginBottom:14}}>
+
+      <div style={{textAlign:"center",marginBottom:12}}>
         <div style={{fontSize:14,fontWeight:800,color:"#111827",marginBottom:3}}>{stepLabels[step].icon} {stepLabels[step].text}</div>
         <div style={{fontSize:12,color:"#6b7280"}}>{match.p1} vs {match.p2}</div>
       </div>
-      <div style={{position:"relative",width:"100%",height:180,borderRadius:14,overflow:"hidden",marginBottom:14,background:"#166534"}}>
-        <svg width="100%" height="100%" viewBox="0 0 200 180" style={{position:"absolute",inset:0}}>
-          <rect width="200" height="180" fill="#166534"/>
-          <rect x="8" y="10" width="184" height="160" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"/>
-          <line x1="8" y1="90" x2="192" y2="90" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5"/>
-          <circle cx="100" cy="90" r="20" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.2"/>
-          <circle cx="100" cy="90" r="2" fill="rgba(255,255,255,0.7)"/>
-          <rect x="8" y="40" width="32" height="60" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1"/>
-          <rect x="160" y="40" width="32" height="60" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1"/>
+
+      {/* Terrain vertical */}
+      <div style={{position:"relative",width:"100%",paddingBottom:"150%",borderRadius:14,overflow:"hidden",marginBottom:14,background:"#16552e"}}>
+        {/* SVG terrain */}
+        <svg style={{position:"absolute",inset:0,width:"100%",height:"100%"}} viewBox="0 0 100 150" preserveAspectRatio="none">
+          {/* Fond avec bandes */}
+          <rect width="100" height="150" fill="#16552e"/>
+          {[0,1,2,3,4,5,6,7,8].map(i=>(
+            <rect key={i} x="0" y={i*17} width="100" height="17" fill={i%2===0?"rgba(255,255,255,0.02)":"rgba(0,0,0,0.02)"}/>
+          ))}
+          {/* Bordure */}
+          <rect x="6" y="8" width="88" height="134" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="1.2"/>
+          {/* Ligne médiane */}
+          <line x1="6" y1="75" x2="94" y2="75" stroke="rgba(255,255,255,0.85)" strokeWidth="1.2"/>
+          {/* Rond central */}
+          <circle cx="50" cy="75" r="14" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1"/>
+          <circle cx="50" cy="75" r="1.5" fill="rgba(255,255,255,0.8)"/>
+          {/* Surface haut */}
+          <rect x="26" y="8" width="48" height="22" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="0.9"/>
+          <rect x="38" y="8" width="24" height="10" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.7"/>
+          <circle cx="50" cy="22" r="1" fill="rgba(255,255,255,0.6)"/>
+          {/* Surface bas */}
+          <rect x="26" y="120" width="48" height="22" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="0.9"/>
+          <rect x="38" y="132" width="24" height="10" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="0.7"/>
+          <circle cx="50" cy="128" r="1" fill="rgba(255,255,255,0.6)"/>
+          {/* Coins */}
+          <path d="M6 12 Q10 8 14 8" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
+          <path d="M86 8 Q90 8 94 12" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
+          <path d="M6 138 Q6 142 10 142" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
+          <path d="M94 138 Q94 142 90 142" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
         </svg>
-        <div style={{position:"absolute",left:0,right:0,height:2,background:"rgba(74,222,128,0.6)",animation:"scanLine2 2s linear infinite",top:0,zIndex:5}}/>
-        {positions.slice(0,visibleCount).map((pos,i)=>(
-          <div key={i} style={{position:"absolute",left:`${pos.x}%`,top:`${pos.y}%`,transform:"translate(-50%,-50%)",width:22,height:22,borderRadius:"50%",background:i===0?"#1565c0":"#c62828",border:"2px solid rgba(255,255,255,0.9)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:900,color:"#fff",animation:"playerAppear 0.3s ease both",boxShadow:"0 2px 6px rgba(0,0,0,0.4)",zIndex:10}}>{i+1}</div>
+
+        {/* Ligne de scan */}
+        <div style={{position:"absolute",left:"6%",right:"6%",height:2,background:"rgba(74,222,128,0.7)",animation:"scanH 2.5s linear infinite",top:"8%",zIndex:5,boxShadow:"0 0 8px rgba(74,222,128,0.5)"}}/>
+
+        {/* Étiquettes équipes */}
+        <div style={{position:"absolute",top:"2%",left:0,right:0,textAlign:"center",fontSize:"2.5vw",fontWeight:800,color:"rgba(255,255,255,0.7)",zIndex:6}}>{match.p1}</div>
+        <div style={{position:"absolute",bottom:"2%",left:0,right:0,textAlign:"center",fontSize:"2.5vw",fontWeight:800,color:"rgba(255,255,255,0.7)",zIndex:6}}>{match.p2}</div>
+
+        {/* Joueurs équipe 1 (bleu) */}
+        {team1Positions.slice(0,t1Visible).map((pos,i)=>(
+          <div key={`t1-${i}`} style={{
+            position:"absolute",
+            left:`${pos.x}%`, top:`${pos.y*150/100}%`,
+            transform:"translate(-50%,-50%)",
+            width:"7%", height:0, paddingBottom:"7%",
+            zIndex:10,
+          }}>
+            <div style={{
+              position:"absolute",inset:0,
+              borderRadius:"50%",
+              background:"#1565c0",
+              border:"1.5px solid rgba(255,255,255,0.95)",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:"2vw",fontWeight:900,color:"#fff",
+              boxShadow:"0 2px 6px rgba(0,0,0,0.5)",
+              animation:"playerPop 0.4s cubic-bezier(.34,1.56,.64,1) both",
+            }}>{i+1}</div>
+          </div>
         ))}
+
+        {/* Joueurs équipe 2 (rouge) */}
+        {team2Positions.slice(0,t2Visible).map((pos,i)=>(
+          <div key={`t2-${i}`} style={{
+            position:"absolute",
+            left:`${pos.x}%`, top:`${pos.y*150/100}%`,
+            transform:"translate(-50%,-50%)",
+            width:"7%", height:0, paddingBottom:"7%",
+            zIndex:10,
+          }}>
+            <div style={{
+              position:"absolute",inset:0,
+              borderRadius:"50%",
+              background:"#c62828",
+              border:"1.5px solid rgba(255,255,255,0.95)",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:"2vw",fontWeight:900,color:"#fff",
+              boxShadow:"0 2px 6px rgba(0,0,0,0.5)",
+              animation:"playerPop 0.4s cubic-bezier(.34,1.56,.64,1) both",
+            }}>{i+1}</div>
+          </div>
+        ))}
+
+        {/* Barre progression */}
         <div style={{position:"absolute",bottom:0,left:0,right:0,height:3,background:"rgba(0,0,0,0.3)"}}>
-          <div style={{height:"100%",width:`${(visibleCount/11)*100}%`,background:"#4ade80",transition:"width 0.3s ease"}}/>
+          <div style={{height:"100%",width:`${((t1Visible+t2Visible)/22)*100}%`,background:"#4ade80",transition:"width 0.4s ease"}}/>
         </div>
       </div>
-      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+
+      {/* Étapes */}
+      <div style={{display:"flex",flexDirection:"column",gap:5}}>
         {stepLabels.map((s,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 10px",borderRadius:8,background:step===i?"#f0fdf4":"transparent",transition:"all 0.3s"}}>
-            <span style={{fontSize:16,opacity:step===i?1:0.4}}>{s.icon}</span>
+            <span style={{fontSize:16,opacity:step===i?1:0.35}}>{s.icon}</span>
             <span style={{fontSize:12,color:step===i?"#166534":"#9ca3af",fontWeight:step===i?700:400}}>{s.text}</span>
-            {step>i&&<span style={{marginLeft:"auto",fontSize:12,color:"#16a34a"}}>✓</span>}
+            {step>i && <span style={{marginLeft:"auto",fontSize:12,color:"#16a34a"}}>✓</span>}
           </div>
         ))}
       </div>
