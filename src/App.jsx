@@ -543,12 +543,23 @@ FORMAT STRICT — respecte exactement ces balises :
 → [Marché] : [Sélection] @ [Cote estimée] — [Intérêt : Faible/Moyen/Fort] — [Raison courte]
 
 🏆 MON PARI :
-Donne UNE seule ligne, claire, directe, sans ambiguïté :
-"Je mise sur [SÉLECTION EXACTE] @ [COTE] — marché : [MARCHÉ EXACT] — confiance [X]/10 — [raison en 10 mots max]"
+Donne UNE seule ligne, ultra-claire, compréhensible même par quelqu'un qui ne parie jamais :
+"Je mise sur [DESCRIPTION COMPLÈTE] @ [COTE] — confiance [X]/10 — [raison en 10 mots max]"
 
-Si tu as trouvé une value bet, commence par 💎
-Si pas de value bet, commence par ⚖️ mais donne quand même UN pari concret.
-INTERDIT : "je ne recommande pas", "à éviter", "trop risqué sans recommandation" — tu dois toujours donner UN pari.
+EXEMPLES de descriptions complètes et claires :
+- "Plus de 2.5 buts dans le match PSG vs Lyon" @ 1.75
+- "Alcaraz vainqueur du match" @ 1.45
+- "Moins de 22.5 jeux au total dans le match" @ 1.90
+- "Les deux équipes marquent dans PSG vs Lyon" @ 1.60
+- "Handicap : PSG gagne avec 2 buts d'écart minimum" @ 2.10
+- "Plus de 8.5 aces pour Zverev dans le match" @ 1.80
+
+RÈGLES :
+- Toujours mentionner les deux équipes ou les deux joueurs dans la description
+- Préciser si c'est DANS LE MATCH ou pour UNE ÉQUIPE spécifique
+- INTERDIT les abréviations ou jargon incompréhensible
+- INTERDIT de proposer une cote <1.35
+- Si value bet : commence par 💎 | Si pas de value bet : commence par ⚖️
 
 ⚠️ ATTENTION : [une seule chose courte et concrète]
 ---`;
@@ -606,12 +617,25 @@ FORMAT STRICT — respecte exactement ces balises :
 → [Buteur probable] : [Nom] @ [Cote] — [Intérêt : Faible/Moyen/Fort] — [Raison]
 
 🏆 MON PARI :
-Donne UNE seule ligne, claire, directe, sans ambiguïté :
-"Je mise sur [SÉLECTION EXACTE] @ [COTE] — marché : [MARCHÉ EXACT] — confiance [X]/10 — [raison en 10 mots max]"
+Donne UNE seule ligne, ultra-claire, compréhensible même par quelqu'un qui ne parie jamais :
+"Je mise sur [DESCRIPTION COMPLÈTE] @ [COTE] — confiance [X]/10 — [raison en 10 mots max]"
 
-Si value bet : commence par 💎. Si pas de value bet : commence par ⚖️ mais donne quand même UN pari.
-INTERDIT de ne rien recommander. INTERDIT de proposer une cote <1.35.
-Cherche parmi tous les marchés : over/under buts, both teams score, mi-temps, buteur, corners, handicap, score exact.
+EXEMPLES de descriptions complètes et claires :
+- "Plus de 2.5 buts dans le match PSG vs Lyon" @ 1.75
+- "PSG gagne le match" @ 1.65
+- "Les deux équipes marquent dans PSG vs Lyon" @ 1.80
+- "Moins de 3.5 buts dans le match Real Madrid vs Barça" @ 1.55
+- "Handicap : PSG gagne avec au moins 2 buts d'écart" @ 2.20
+- "Mbappé marque au moins un but dans le match" @ 2.10
+- "PSG gagne la première mi-temps" @ 1.90
+- "Plus de 9.5 corners dans le match" @ 1.85
+
+RÈGLES :
+- Toujours mentionner les équipes dans la description
+- Préciser si c'est DANS LE MATCH ENTIER ou pour UNE ÉQUIPE ou sur UNE MI-TEMPS
+- INTERDIT les abréviations ou jargon incompréhensible
+- INTERDIT de proposer une cote <1.35
+- Si value bet : commence par 💎 | Si pas de value bet : commence par ⚖️
 
 ⚠️ ATTENTION : [une seule chose courte et concrète]
 ---`;
@@ -933,30 +957,15 @@ function LineupLoadingAnimation({ match }) {
           zIndex:5,boxShadow:"0 0 6px rgba(74,222,128,0.6)",
         }}/>
 
-        {/* Joueurs — UNE SEULE équipe, bleu uniforme */}
-        {players.slice(0, visibleCount).map((p, i) => (
-          <div key={i} style={{
-            position:"absolute",
-            left:`${p.x}%`,
-            top:`${(p.y/150)*100}%`,
-            transform:"translate(-50%,-50%)",
-            width:"12%", paddingBottom:"12%", height:0,
-            zIndex:10,
-          }}>
-            <div style={{
-              position:"absolute",inset:0,
-              borderRadius:"50%",
-              background:"#1565c0",
-              border:"2px solid rgba(255,255,255,0.95)",
-              display:"flex",alignItems:"center",justifyContent:"center",
-              fontSize:"clamp(6px,2.5vw,11px)",
-              fontWeight:900,color:"#fff",
-              boxShadow:"0 2px 8px rgba(0,0,0,0.5)",
-              animation:"playerPop2 0.4s cubic-bezier(.34,1.56,.64,1) both",
-              animationDelay:`${i*0.08}s`,
-            }}>{p.num}</div>
-          </div>
-        ))}
+        {/* Joueurs positionnés EN SVG pour parfaite cohérence avec le terrain */}
+        <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",overflow:"visible"}} viewBox="0 0 100 150" preserveAspectRatio="xMidYMid meet">
+          {players.slice(0, visibleCount).map((p, i) => (
+            <g key={i} style={{animation:`playerPop2 0.4s cubic-bezier(.34,1.56,.64,1) ${i*0.08}s both`}}>
+              <circle cx={p.x} cy={p.y} r="5.5" fill="#1565c0" stroke="rgba(255,255,255,0.95)" strokeWidth="1.5"/>
+              <text x={p.x} y={p.y+1.5} textAnchor="middle" dominantBaseline="middle" fontSize="4" fontWeight="900" fill="#fff" fontFamily="system-ui">{p.num}</text>
+            </g>
+          ))}
+        </svg>
 
         {/* Progression */}
         <div style={{position:"absolute",bottom:0,left:0,right:0,height:3,background:"rgba(0,0,0,0.4)"}}>
@@ -2251,6 +2260,13 @@ function AnalysisPanel({ match, onClose }) {
 
           {analysis && !loading && (
             <div>
+              {/* Message de prévention */}
+              <div style={{background:"#fff8f0",border:"1.5px solid #fed7aa",borderRadius:12,padding:"10px 14px",marginBottom:12,display:"flex",gap:10,alignItems:"flex-start"}}>
+                <span style={{fontSize:16,flexShrink:0}}>⚠️</span>
+                <div style={{fontSize:11.5,color:"#92400e",lineHeight:1.6,fontStyle:"italic"}}>
+                  Ne mise jamais plus que ce que tu peux te permettre de perdre. L'argent que tu gagnes ou non ne doit être que du bonus.
+                </div>
+              </div>
               {lines}
               <button onClick={()=>{setAnalysis(null);}} className="btn-hover" style={{width:"100%",marginTop:12,background:"#f3f4f6",border:"none",borderRadius:11,padding:"11px 0",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",color:"#374151"}}>
                 ↩ Relancer l'analyse
